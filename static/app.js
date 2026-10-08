@@ -660,36 +660,39 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         let currentGroup = null;
 
         timeline.forEach(col => {
-            if (col.type === 'break') {
-                if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
-                colsHTML.push({ type: 'break', col: col });
-                return;
-            }
-            
             // Find all active sessions in this exact slot
             let activeSessions = filtered.filter(a => {
                 let matchFilter = filterType === 'master' ? (a.day === rg.day && a.section_id === rg.filterVal) : (a.day === rg.day);
-                // Active if the session starts at or before this slot AND ends at or after this slot ends
                 return matchFilter && a.time_start <= col.start_time && a.time_end >= col.end_time;
             });
-            
+
+            if (col.type === 'break') {
+                let hasLab = activeSessions.some(a => a.course_type === 'LAB');
+                if (!hasLab) {
+                    if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
+                    colsHTML.push({ type: 'break', col: col });
+                    return;
+                }
+            }
+
             if (activeSessions.length === 0) {
                 if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
                 colsHTML.push({ type: 'empty' });
             } else {
-                // Generate a signature for the exact set of sessions active right now
-                activeSessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
-                let sig = activeSessions.map(a => a.session_id).join('|');
-                
+                // Determine if there is ANY overlap in sessions with the current group
                 if (!currentGroup) {
-                    currentGroup = { type: 'sessions', sig: sig, sessions: activeSessions, colspan: 1 };
-                } else if (currentGroup.sig === sig) {
-                    // Exact same sessions continue into this slot! Extend colspan!
-                    currentGroup.colspan++;
+                    currentGroup = { type: 'sessions', colspan: 1, cols: [{ col: col, sessions: activeSessions }] };
                 } else {
-                    // Sessions changed! Commit current group and start a new one
-                    colsHTML.push(currentGroup);
-                    currentGroup = { type: 'sessions', sig: sig, sessions: activeSessions, colspan: 1 };
+                    let lastColSessions = currentGroup.cols[currentGroup.cols.length - 1].sessions;
+                    let hasOverlap = activeSessions.some(a => lastColSessions.some(prev => prev.session_id === a.session_id));
+                    
+                    if (hasOverlap) {
+                        currentGroup.colspan++;
+                        currentGroup.cols.push({ col: col, sessions: activeSessions });
+                    } else {
+                        colsHTML.push(currentGroup);
+                        currentGroup = { type: 'sessions', colspan: 1, cols: [{ col: col, sessions: activeSessions }] };
+                    }
                 }
             }
         });
@@ -702,10 +705,42 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
             } else if (item.type === 'empty') {
                 tr.innerHTML += `<td class="tt-cell-empty"></td>`;
             } else {
-                let arr = item.sessions;
-                let overallCss = arr.some(a => a.course_type === 'LAB') ? 'tt-cell-lab' : 'tt-cell-theory';
+                let activeCols = item.cols.filter(c => c.col.type !== 'break');
+                let gridColsCount = activeCols.length || 1;
                 
-                let detailsArr = arr.map(a => {
+                let gridColMap = {};
+                let currentGridCol = 1;
+                item.cols.forEach((c, cIdx) => {
+                    if (c.col.type === 'break') {
+                        gridColMap[cIdx] = currentGridCol > 1 ? currentGridCol - 1 : 1;
+                    } else {
+                        gridColMap[cIdx] = currentGridCol;
+                        currentGridCol++;
+                    }
+                });
+
+                let allSessionsMap = {};
+                item.cols.forEach((c, cIdx) => {
+                    c.sessions.forEach(s => {
+                        if (!allSessionsMap[s.session_id]) {
+                            allSessionsMap[s.session_id] = { session: s, startCol: gridColMap[cIdx], endCol: gridColMap[cIdx] };
+                        } else {
+                            allSessionsMap[s.session_id].endCol = gridColMap[cIdx];
+                        }
+                    });
+                });
+
+                let sessionsList = Object.values(allSessionsMap);
+                sessionsList.sort((a, b) => {
+                    let spanA = a.endCol - a.startCol;
+                    let spanB = b.endCol - b.startCol;
+                    if (spanA !== spanB) return spanB - spanA; // wider on top
+                    return a.session.course_name.localeCompare(b.session.course_name);
+                });
+
+                let detailsArr = sessionsList.map(itemObj => {
+                    let a = itemObj.session;
+                    let span = itemObj.endCol - itemObj.startCol + 1;
                     let facs = a.faculty_name ? a.faculty_name : (a.faculty_ids ? a.faculty_ids.join(', ') : '');
                     let bBadge = (a.batch_name && a.batch_name !== 'ALL') ? `<span class="tt-batch">${a.batch_name}</span>` : '';
                     let rRoom = `<span>Room: ${a.room_name}</span>`;
@@ -716,21 +751,23 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
                     if (rSec) meta.push(rSec);
                     if (rFac && filterType !== 'faculty') meta.push(rFac);
                     if (rRoom && filterType !== 'room') meta.push(rRoom);
-                    
+
                     return `
-                        <div class="tt-session-card">
+                        <div class="tt-session-card" style="grid-column: ${itemObj.startCol} / span ${span}; height: 100%; display: flex; flex-direction: column; justify-content: center; margin: 0; box-sizing: border-box; padding: 6px 4px;">
                             <div class="tt-subj">${a.course_name} ${bBadge}</div>
                             <div class="tt-meta">${meta.join(' | ')}</div>
                         </div>
                     `;
                 });
                 
-                let htmlBlock = detailsArr.join('<hr style="margin:4px 0; border:0; border-top:1px dashed rgba(0,0,0,0.1);">');
-                tr.innerHTML += `<td colspan="${item.colspan}" class="${overallCss}">${htmlBlock}</td>`;
+                let htmlBlock = `<div style="display: grid; grid-template-columns: repeat(${gridColsCount}, 1fr); width: 100%; min-height: 60px;">${detailsArr.join('')}</div>`;
+                let overallCss = sessionsList.some(s => s.session.course_type === 'LAB') ? 'tt-cell-lab' : 'tt-cell-theory';
+                tr.innerHTML += `<td colspan="${item.colspan}" class="${overallCss}" style="padding: 0; vertical-align: top;">${htmlBlock}</td>`;
             }
         });
-        
+
         tbody.appendChild(tr);
+
     });
       
         table.appendChild(tbody);
