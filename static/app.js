@@ -142,7 +142,11 @@ async function loadTimeSlots() {
 
 document.getElementById('btn-load-demo').addEventListener('click', async () => {
     try {
-        const res = await fetchJSON('/api/load-demo', { method: 'POST' });
+        const scenario = document.getElementById('demo-scenario-select')?.value || 'standard';
+        const res = await fetchJSON('/api/load-demo', {
+            method: 'POST',
+            body: JSON.stringify({ scenario: scenario })
+        });
         showNotification(res.message);
         loadConfig();
     } catch (e) { }

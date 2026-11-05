@@ -659,7 +659,9 @@ def get_summary():
 def load_demo():
     """Load the built-in demonstration dataset."""
     try:
-        demo = get_demo_data()
+        data = request.get_json(silent=True) or {}
+        scenario = data.get('scenario', 'standard')
+        demo = get_demo_data(scenario)
         app_data['config'] = demo['config']
         app_data['rooms'] = demo['rooms']
         app_data['faculty'] = demo['faculty']
@@ -669,7 +671,7 @@ def load_demo():
         app_data['engine'] = None
         app_data['result'] = None
         save_data(app_data)
-        return jsonify({'status': 'ok', 'message': 'Demo data loaded successfully'})
+        return jsonify({'status': 'ok', 'scenario': scenario, 'message': f'Demo dataset ({scenario}) loaded successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

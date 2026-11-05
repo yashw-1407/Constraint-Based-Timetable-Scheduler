@@ -47,7 +47,13 @@
                     <h2>System Configuration</h2>
                     <p class="page-desc">Set working hours, breaks, and time slot duration before adding data.</p>
                 </div>
-                <div class="actions">
+                <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <select id="demo-scenario-select" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 500; background: #fff; cursor: pointer; color: var(--text-dark);">
+                        <option value="standard">Case 1: Standard Academic Load (Balanced)</option>
+                        <option value="bottleneck">Case 2: Resource Bottleneck (High Contention)</option>
+                        <option value="infeasible">Case 3: Infeasible Conflict (Stress Test)</option>
+                        <option value="single_section">Case 4: Single Section (Viva Walkthrough)</option>
+                    </select>
                     <button id="btn-load-demo" class="btn success">
                         Load Demo Data
                     </button>

@@ -29,11 +29,15 @@ class TestTimetableScheduler(unittest.TestCase):
             self.assertFalse(is_emoji, f"Found emoji {ch} in HTML")
 
     def test_02_load_demo_data(self):
-        """Verify loading built-in demo dataset."""
-        res = self.client.post('/api/load-demo')
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertEqual(data.get('status'), 'ok')
+        """Verify loading built-in demo datasets across scenarios."""
+        for scenario in ['standard', 'bottleneck', 'infeasible', 'single_section']:
+            res = self.client.post('/api/load-demo', json={'scenario': scenario})
+            self.assertEqual(res.status_code, 200)
+            data = res.get_json()
+            self.assertEqual(data.get('status'), 'ok')
+
+        # Reset back to standard
+        self.client.post('/api/load-demo', json={'scenario': 'standard'})
 
         # Check config
         cfg = self.client.get('/api/config').get_json()
