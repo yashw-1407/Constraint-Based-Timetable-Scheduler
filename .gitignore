@@ -1,29 +1,28 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 
-# Environments
+# Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
-# Logs and databases
-*.log
+# Runtime data (re-generated on startup)
+database.json
 
-# Large trace files
+# Scheduler trace output
 scheduler_trace.json
 scheduler_trace.txt
 
-# Editor directories and files
+# Editor
 .vscode/
 .idea/
 *.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
+
+# OS
+.DS_Store
+Thumbs.db

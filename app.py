@@ -12,7 +12,7 @@ All data is stored in-memory (no database required for the MVP).
 
 from flask import Flask, jsonify, request, render_template
 import os
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
@@ -336,13 +336,13 @@ def manage_courses_id(id):
                 id=data['id'],
                 name=data['name'],
                 code=data['code'],
-                                section_id=data['section_id'],
+                section_id=data['section_id'],
                 l=float(data.get('l', 0)),
                 t=float(data.get('t', 0)),
                 p=float(data.get('p', 0)),
                 faculty_ids=data.get('faculty_ids', []),
                 assistant_faculty_ids=data.get('assistant_faculty_ids', []),
-                room_type=data['room_type'],
+                room_type=data.get('room_type', RoomType.THEORY_ROOM),
                 required_room_id=data.get('required_room_id') or None,
                 lab_batches=data.get('lab_batches', []),
             )
@@ -604,57 +604,55 @@ def validate_current_timetable():
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Excel Import API
+# Excel Import API — REMOVED in v1 (demo data only)
 # ---------------------------------------------------------------------------
-@app.route('/api/import-excel', methods=['POST'])
-def import_excel():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    if not file.filename.endswith('.xlsx'):
-        return jsonify({'error': 'Must be an .xlsx file'}), 400
-        
-    temp_path = 'temp_upload.xlsx'
-    file.save(temp_path)
-    
-    from excel_import import parse_excel
-    res = parse_excel(temp_path)
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
-        
-    if res['status'] == 'error':
-        return jsonify({'error': 'Validation failed', 'details': res['errors']}), 400
-        
-    data = res['data']
-    
-    if request.args.get('preview') == 'true':
-        return jsonify({
-            'status': 'ok',
-            'counts': {
-                'faculty': len(data['faculty']),
-                'rooms': len(data['rooms']),
-                'sections': len(data['sections']),
-                'batches': len(data['batches']),
-                'courses': len(data['courses'])
-            }
-        })
-        
-    app_data['faculty'] = data['faculty']
-    app_data['rooms'] = data['rooms']
-    app_data['sections'] = data['sections']
-    app_data['batches'] = data['batches']
-    app_data['courses'] = data['courses']
-    
-    app_data['engine'] = None
-    app_data['result'] = None
-    
-    save_data(app_data)
-    
+# Deferred to a future version. Use /api/load-demo or manual entry.
+
+
+# ---------------------------------------------------------------------------
+# Pre-Generate Summary API  (v1 addition)
+# ---------------------------------------------------------------------------
+@app.route('/api/summary', methods=['GET'])
+def get_summary():
+    """Return a summary of the current dataset before timetable generation."""
+    cfg   = app_data['config']
+    courses  = app_data['courses']
+    sections = app_data['sections']
+    batches  = app_data['batches']
+    faculty  = app_data['faculty']
+    rooms    = app_data['rooms']
+
+    theory_sessions = 0
+    lab_sessions    = 0
+    total_weekly_hours = 0
+
+    for c in courses:
+        theory_sessions += int(c.l) + int(c.t)
+        lb = len(c.lab_batches) if c.lab_batches else 0
+        if lb > 0 and c.p > 0:
+            lab_sessions += lb
+        total_weekly_hours += c.l + c.t + c.p
+
+    slots_per_week = 0
+    if cfg:
+        from time_slots import generate_time_slots
+        slots = generate_time_slots(cfg)
+        slots_per_week = len(slots) * len(cfg.working_days)
+
     return jsonify({
-        'status': 'ok',
-        'message': f"Successfully imported {len(data['faculty'])} faculty, {len(data['rooms'])} rooms, {len(data['sections'])} sections, {len(data['batches'])} batches, and {len(data['courses'])} courses."
+        'sections':                 len(sections),
+        'batches':                  len(batches),
+        'faculty':                  len(faculty),
+        'rooms':                    len(rooms),
+        'lab_rooms':                len([r for r in rooms if r.room_type == 'LAB']),
+        'theory_rooms':             len([r for r in rooms if r.room_type == 'THEORY_ROOM']),
+        'courses':                  len(courses),
+        'theory_sessions_per_week': theory_sessions,
+        'lab_sessions_per_week':    lab_sessions,
+        'total_weekly_session_hours': round(total_weekly_hours, 1),
+        'available_slots_per_week': slots_per_week,
+        'working_days':             cfg.working_days if cfg else [],
+        'config_set':               cfg is not None,
     })
 
 @app.route('/api/load-demo', methods=['POST'])

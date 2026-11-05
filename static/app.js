@@ -52,8 +52,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 function loadTabData(tabId) {
     if (tabId === 'config') {
         loadConfig();
-    } else if (tabId === 'trace') {
-        loadTraceConfig();
     } else if (tabId === 'rooms') loadRooms();
     else if (tabId === 'faculty') loadFaculty();
     else if (tabId === 'sections') loadSections();
@@ -147,7 +145,6 @@ document.getElementById('btn-load-demo').addEventListener('click', async () => {
         const res = await fetchJSON('/api/load-demo', { method: 'POST' });
         showNotification(res.message);
         loadConfig();
-    loadTraceConfig();
     } catch (e) { }
 });
 document.getElementById('btn-clear-data').addEventListener('click', async () => {
@@ -156,7 +153,6 @@ document.getElementById('btn-clear-data').addEventListener('click', async () => 
         await fetchJSON('/api/clear', { method: 'POST' });
         showNotification('Data cleared');
         loadConfig();
-    loadTraceConfig();
     } catch (e) { }
 });
 
@@ -474,42 +470,69 @@ document.getElementById('form-course').addEventListener('submit', async (e) => {
 
 // Generate Tab
 document.getElementById('btn-generate').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate');
     const statusDiv = document.getElementById('generate-status');
+    const statusCard = document.getElementById('gen-status-card');
     const statusText = document.getElementById('gen-status-text');
     const scoreDiv = document.getElementById('gen-score');
     const diagDiv = document.getElementById('gen-diagnostics');
-    
+
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = 'Generating...';
     statusDiv.style.display = 'block';
-    statusText.textContent = 'Generating... Please wait';
-    statusText.style.color = '';
+    statusCard.className = 'status-card';
+    statusText.textContent = 'Running CSP solver... please wait';
+    statusText.style.color = 'var(--text-muted)';
     scoreDiv.style.display = 'none';
     diagDiv.style.display = 'none';
-    
+
     try {
         const res = await fetchJSON('/api/generate', { method: 'POST' });
+
         if (res.status === 'success') {
             const bestVariant = res.variants && res.variants.length > 0 ? res.variants[res.active_variant_index || 0] : res;
             const stats = bestVariant.stats || {};
-            statusText.textContent = `Timetable generated successfully! (${stats.total_sessions} sessions, ${stats.backtracks} backtracks, ${stats.time_ms}ms)`;
+
+            statusCard.className = 'status-card success-card';
+            statusText.innerHTML = `Timetable generated successfully!`;
             statusText.style.color = 'var(--success)';
             scoreDiv.style.display = 'block';
-            
+
             let detailsHtml = '';
             if (bestVariant.soft_score && bestVariant.soft_score.details) {
-                detailsHtml = Object.entries(bestVariant.soft_score.details)
-                    .map(([k,v]) => `${v.description || k}: <strong>${v.score}/${v.max}</strong>`)
-                    .join('<br>');
+                detailsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+                    Object.entries(bestVariant.soft_score.details)
+                    .map(([k,v]) => `<span style="background:white;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:13px;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
+                    .join('') + '</div>';
             }
-            scoreDiv.innerHTML = `<strong>Soft Score: ${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}%</strong><br>` + detailsHtml;
+            scoreDiv.innerHTML = `
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--success);">${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}% Quality</div>
+                    <div style="font-size:13px;color:var(--text-muted);">${stats.total_sessions || 0} sessions · ${stats.backtracks || 0} backtracks · ${stats.time_ms || 0}ms</div>
+                </div>
+                ${detailsHtml}
+            `;
+
+            // After 1.5s, prompt user to go to Views tab
+            setTimeout(() => {
+                showNotification('Timetable ready! Switch to Timetable Views tab', 'success');
+            }, 600);
+
         } else {
-            statusText.textContent = `Generation Failed (Infeasible) - ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
+            statusCard.className = 'status-card error-card';
+            statusText.innerHTML = `Generation Failed — ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
             statusText.style.color = 'var(--danger)';
             diagDiv.style.display = 'block';
-            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message}<br><pre>${res.diagnostics}</pre>`;
+            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message || 'Infeasible problem'}<br><pre style="font-size:12px;margin-top:8px;white-space:pre-wrap;">${res.diagnostics || ''}</pre>`;
         }
     } catch (e) {
-        statusText.textContent = 'Error: ' + e.message;
+        statusCard.className = 'status-card error-card';
+        statusText.innerHTML = `Error: ${e.message}`;
         statusText.style.color = 'var(--danger)';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Generate Timetable';
     }
 });
 
@@ -660,39 +683,36 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         let currentGroup = null;
 
         timeline.forEach(col => {
+            if (col.type === 'break') {
+                if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
+                colsHTML.push({ type: 'break', col: col });
+                return;
+            }
+            
             // Find all active sessions in this exact slot
             let activeSessions = filtered.filter(a => {
                 let matchFilter = filterType === 'master' ? (a.day === rg.day && a.section_id === rg.filterVal) : (a.day === rg.day);
+                // Active if the session starts at or before this slot AND ends at or after this slot ends
                 return matchFilter && a.time_start <= col.start_time && a.time_end >= col.end_time;
             });
-
-            if (col.type === 'break') {
-                let hasLab = activeSessions.some(a => a.course_type === 'LAB');
-                if (!hasLab) {
-                    if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
-                    colsHTML.push({ type: 'break', col: col });
-                    return;
-                }
-            }
-
+            
             if (activeSessions.length === 0) {
                 if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
                 colsHTML.push({ type: 'empty' });
             } else {
-                // Determine if there is ANY overlap in sessions with the current group
+                // Generate a signature for the exact set of sessions active right now
+                activeSessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
+                let sig = activeSessions.map(a => a.session_id).join('|');
+                
                 if (!currentGroup) {
-                    currentGroup = { type: 'sessions', colspan: 1, cols: [{ col: col, sessions: activeSessions }] };
+                    currentGroup = { type: 'sessions', sig: sig, sessions: activeSessions, colspan: 1 };
+                } else if (currentGroup.sig === sig) {
+                    // Exact same sessions continue into this slot! Extend colspan!
+                    currentGroup.colspan++;
                 } else {
-                    let lastColSessions = currentGroup.cols[currentGroup.cols.length - 1].sessions;
-                    let hasOverlap = activeSessions.some(a => lastColSessions.some(prev => prev.session_id === a.session_id));
-                    
-                    if (hasOverlap) {
-                        currentGroup.colspan++;
-                        currentGroup.cols.push({ col: col, sessions: activeSessions });
-                    } else {
-                        colsHTML.push(currentGroup);
-                        currentGroup = { type: 'sessions', colspan: 1, cols: [{ col: col, sessions: activeSessions }] };
-                    }
+                    // Sessions changed! Commit current group and start a new one
+                    colsHTML.push(currentGroup);
+                    currentGroup = { type: 'sessions', sig: sig, sessions: activeSessions, colspan: 1 };
                 }
             }
         });
@@ -705,42 +725,10 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
             } else if (item.type === 'empty') {
                 tr.innerHTML += `<td class="tt-cell-empty"></td>`;
             } else {
-                let activeCols = item.cols.filter(c => c.col.type !== 'break');
-                let gridColsCount = activeCols.length || 1;
+                let arr = item.sessions;
+                let overallCss = arr.some(a => a.course_type === 'LAB') ? 'tt-cell-lab' : 'tt-cell-theory';
                 
-                let gridColMap = {};
-                let currentGridCol = 1;
-                item.cols.forEach((c, cIdx) => {
-                    if (c.col.type === 'break') {
-                        gridColMap[cIdx] = currentGridCol > 1 ? currentGridCol - 1 : 1;
-                    } else {
-                        gridColMap[cIdx] = currentGridCol;
-                        currentGridCol++;
-                    }
-                });
-
-                let allSessionsMap = {};
-                item.cols.forEach((c, cIdx) => {
-                    c.sessions.forEach(s => {
-                        if (!allSessionsMap[s.session_id]) {
-                            allSessionsMap[s.session_id] = { session: s, startCol: gridColMap[cIdx], endCol: gridColMap[cIdx] };
-                        } else {
-                            allSessionsMap[s.session_id].endCol = gridColMap[cIdx];
-                        }
-                    });
-                });
-
-                let sessionsList = Object.values(allSessionsMap);
-                sessionsList.sort((a, b) => {
-                    let spanA = a.endCol - a.startCol;
-                    let spanB = b.endCol - b.startCol;
-                    if (spanA !== spanB) return spanB - spanA; // wider on top
-                    return a.session.course_name.localeCompare(b.session.course_name);
-                });
-
-                let detailsArr = sessionsList.map(itemObj => {
-                    let a = itemObj.session;
-                    let span = itemObj.endCol - itemObj.startCol + 1;
+                let detailsArr = arr.map(a => {
                     let facs = a.faculty_name ? a.faculty_name : (a.faculty_ids ? a.faculty_ids.join(', ') : '');
                     let bBadge = (a.batch_name && a.batch_name !== 'ALL') ? `<span class="tt-batch">${a.batch_name}</span>` : '';
                     let rRoom = `<span>Room: ${a.room_name}</span>`;
@@ -751,23 +739,21 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
                     if (rSec) meta.push(rSec);
                     if (rFac && filterType !== 'faculty') meta.push(rFac);
                     if (rRoom && filterType !== 'room') meta.push(rRoom);
-
+                    
                     return `
-                        <div class="tt-session-card" style="grid-column: ${itemObj.startCol} / span ${span}; height: 100%; display: flex; flex-direction: column; justify-content: center; margin: 0; box-sizing: border-box; padding: 6px 4px;">
+                        <div class="tt-session-card">
                             <div class="tt-subj">${a.course_name} ${bBadge}</div>
                             <div class="tt-meta">${meta.join(' | ')}</div>
                         </div>
                     `;
                 });
                 
-                let htmlBlock = `<div style="display: grid; grid-template-columns: repeat(${gridColsCount}, 1fr); width: 100%; min-height: 60px;">${detailsArr.join('')}</div>`;
-                let overallCss = sessionsList.some(s => s.session.course_type === 'LAB') ? 'tt-cell-lab' : 'tt-cell-theory';
-                tr.innerHTML += `<td colspan="${item.colspan}" class="${overallCss}" style="padding: 0; vertical-align: top;">${htmlBlock}</td>`;
+                let htmlBlock = detailsArr.join('<hr style="margin:4px 0; border:0; border-top:1px dashed rgba(0,0,0,0.1);">');
+                tr.innerHTML += `<td colspan="${item.colspan}" class="${overallCss}">${htmlBlock}</td>`;
             }
         });
-
+        
         tbody.appendChild(tr);
-
     });
       
         table.appendChild(tbody);
@@ -855,88 +841,9 @@ document.querySelectorAll('.view-btn').forEach(btn => {
                 selector.onchange = (ev) => renderRoomView(ev.target.value);
             }
             
-            document.getElementById('view-content').innerHTML = '<p>Please select an option from the dropdown above.</p>';
+            document.getElementById('view-content').innerHTML = '<div class="empty-state"><p>Select from the dropdown above to view the timetable.</p></div>';
         }
     });
-});
-
-
-document.getElementById('btn-preview-import')?.addEventListener('click', async () => {
-    const fileInput = document.getElementById('excel-file');
-    if (!fileInput || !fileInput.files.length) {
-        showNotification('Please select an Excel file first.', 'error');
-        return;
-    }
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    try {
-        const btn = document.getElementById('btn-preview-import');
-        btn.textContent = 'Previewing...';
-        btn.disabled = true;
-
-        const res = await fetch('/api/import-excel?preview=true', { method: 'POST', body: formData });
-        const data = await res.json();
-        
-        btn.textContent = 'Preview Data';
-        btn.disabled = false;
-        
-        const previewDiv = document.getElementById('import-preview');
-        const countsDiv = document.getElementById('preview-counts');
-        const errorsDiv = document.getElementById('preview-errors');
-        previewDiv.style.display = 'block';
-        
-        if (!res.ok) {
-            countsDiv.innerHTML = '';
-            let errorMsg = data.error || 'Validation failed';
-            if (data.details) errorMsg += '<br>' + data.details.join('<br>');
-            errorsDiv.innerHTML = errorMsg;
-            document.getElementById('btn-import-excel').style.display = 'none';
-        } else {
-            errorsDiv.innerHTML = '';
-            countsDiv.innerHTML = `
-                <ul style="margin-left: 20px;">
-                    <li>Faculty: ${data.counts.faculty}</li>
-                    <li>Rooms: ${data.counts.rooms}</li>
-                    <li>Sections: ${data.counts.sections}</li>
-                    <li>Batches: ${data.counts.batches}</li>
-                    <li>Courses: ${data.counts.courses}</li>
-                </ul>
-                <p style="color:green; font-weight:bold; margin-top: 10px;">Validation Passed. Ready to import.</p>
-            `;
-            document.getElementById('btn-import-excel').style.display = 'inline-block';
-        }
-    } catch (e) {
-        showNotification('Failed to preview file.', 'error');
-    }
-});
-
-document.getElementById('btn-import-excel')?.addEventListener('click', async () => {
-    const fileInput = document.getElementById('excel-file');
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    try {
-        const btn = document.getElementById('btn-import-excel');
-        btn.textContent = 'Importing...';
-        btn.disabled = true;
-        const res = await fetch('/api/import-excel', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok) {
-            showNotification(data.error || 'Import failed', 'error');
-        } else {
-            showNotification('Dataset imported successfully!');
-            document.getElementById('import-preview').style.display = 'none';
-            btn.style.display = 'none';
-            await loadRooms();
-            await loadFaculty();
-            await loadSections();
-            await loadCourses();
-        }
-        btn.textContent = 'Import Dataset';
-        btn.disabled = false;
-    } catch (e) {
-        showNotification('Import failed.', 'error');
-    }
 });
 
 
@@ -1033,29 +940,36 @@ let totalVariants = 0;
 
 async function loadVariantMetadata() {
     try {
+        const nav = document.getElementById('variant-navigator');
+        if (!nav) return;
         const res = await fetch('/api/timetable/metadata');
         if (!res.ok) {
-            document.getElementById('variant-navigator').style.display = 'none';
+            nav.style.display = 'none';
             return;
         }
         const data = await res.json();
         
         if (data.num_variants > 1) {
-            document.getElementById('variant-navigator').style.display = 'flex';
+            nav.style.display = 'flex';
             currentVariantIndex = data.active_variant_index;
             totalVariants = data.num_variants;
             
-            document.getElementById('var-current').textContent = currentVariantIndex + 1;
-            document.getElementById('var-total').textContent = totalVariants;
-            document.getElementById('var-score').textContent = data.active_score.total_score || 0;
-            
-            document.getElementById('btn-var-prev').disabled = currentVariantIndex === 0;
-            document.getElementById('btn-var-next').disabled = currentVariantIndex === totalVariants - 1;
+            const curEl = document.getElementById('var-current');
+            const totEl = document.getElementById('var-total');
+            const scoreEl = document.getElementById('var-score');
+            const prevBtn = document.getElementById('btn-var-prev');
+            const nextBtn = document.getElementById('btn-var-next');
+            if (curEl) curEl.textContent = currentVariantIndex + 1;
+            if (totEl) totEl.textContent = totalVariants;
+            if (scoreEl) scoreEl.textContent = data.active_score ? data.active_score.total_score : 0;
+            if (prevBtn) prevBtn.disabled = currentVariantIndex === 0;
+            if (nextBtn) nextBtn.disabled = currentVariantIndex === totalVariants - 1;
         } else {
-            document.getElementById('variant-navigator').style.display = 'none';
+            nav.style.display = 'none';
         }
     } catch (e) {
-        document.getElementById('variant-navigator').style.display = 'none';
+        const nav = document.getElementById('variant-navigator');
+        if (nav) nav.style.display = 'none';
     }
 }
 
@@ -1199,8 +1113,10 @@ async function loadTraceConfig() {
     try {
         const res = await fetchJSON('/api/debug/trace/config');
         if (res) {
-            document.getElementById('trace-level').value = res.level;
-            document.getElementById('trace-filter').value = res.session_filter ? res.session_filter.join(', ') : '';
+            const lvl = document.getElementById('trace-level');
+            const flt = document.getElementById('trace-filter');
+            if (lvl) lvl.value = res.level;
+            if (flt) flt.value = res.session_filter ? res.session_filter.join(', ') : '';
         }
     } catch (err) {
         console.error('Failed to load trace config:', err);
@@ -1208,8 +1124,11 @@ async function loadTraceConfig() {
 }
 
 async function saveTraceConfig() {
-    const level = parseInt(document.getElementById('trace-level').value, 10);
-    const filter = document.getElementById('trace-filter').value;
+    const lvl = document.getElementById('trace-level');
+    const flt = document.getElementById('trace-filter');
+    if (!lvl) return;
+    const level = parseInt(lvl.value, 10);
+    const filter = flt ? flt.value : '';
     
     try {
         await fetchJSON('/api/debug/trace/config', {
