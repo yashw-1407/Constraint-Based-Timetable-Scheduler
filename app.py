@@ -22,6 +22,7 @@ from demo_data import get_demo_data
 from database import load_data, save_data
 import importer
 import exporter
+import adjuster
 
 app = Flask(__name__)
 
@@ -527,6 +528,123 @@ def publish_timetable():
     app_data['publishing'] = pub
     save_data(app_data)
     return jsonify({'status': 'ok', 'publishing': pub})
+
+
+def _get_or_restore_engine():
+    engine = app_data.get('engine')
+    if engine and hasattr(engine, 'assignments') and len(engine.assignments) > 0:
+        return engine
+    result = app_data.get('result')
+    if result and result.get('assignments_data') and app_data.get('config'):
+        engine = SchedulingEngine(
+            app_data['config'],
+            app_data['courses'],
+            app_data['rooms'],
+            app_data['faculty'],
+            app_data['sections'],
+            app_data['batches']
+        )
+        engine.load_assignments_data(result['assignments_data'])
+        app_data['engine'] = engine
+        return engine
+    return engine
+
+
+@app.route('/api/timetable/validate-move', methods=['POST'])
+def api_validate_move():
+    engine = _get_or_restore_engine()
+    if not engine or not app_data.get('result'):
+        return jsonify({'valid': False, 'message': 'No generated timetable found', 'details': {'code': 'NO_TIMETABLE'}}), 400
+
+    data = request.get_json(silent=True) or {}
+    session_id = data.get('session_id')
+    target_day = data.get('target_day')
+    target_start_slot = data.get('target_start_slot')
+    target_room_id = data.get('target_room_id')
+
+    if not session_id or not target_day or target_start_slot is None or not target_room_id:
+        return jsonify({
+            'valid': False,
+            'message': 'Missing required fields: session_id, target_day, target_start_slot, target_room_id',
+            'details': {'code': 'MISSING_FIELDS'}
+        }), 400
+
+    try:
+        target_start_slot = int(target_start_slot)
+    except (TypeError, ValueError):
+        return jsonify({'valid': False, 'message': 'Invalid target_start_slot number', 'details': {'code': 'INVALID_SLOT'}}), 400
+
+    valid, message, details = adjuster.validate_move(
+        engine, session_id, target_day, target_start_slot, target_room_id
+    )
+    return jsonify({
+        'valid': valid,
+        'message': message,
+        'details': details
+    })
+
+
+@app.route('/api/timetable/move', methods=['POST'])
+def api_execute_move():
+    engine = _get_or_restore_engine()
+    if not engine or not app_data.get('result'):
+        return jsonify({'status': 'error', 'message': 'No generated timetable found', 'details': {'code': 'NO_TIMETABLE'}}), 400
+
+    data = request.get_json(silent=True) or {}
+    session_id = data.get('session_id')
+    target_day = data.get('target_day')
+    target_start_slot = data.get('target_start_slot')
+    target_room_id = data.get('target_room_id')
+
+    if not session_id or not target_day or target_start_slot is None or not target_room_id:
+        return jsonify({
+            'status': 'error',
+            'message': 'Missing required fields: session_id, target_day, target_start_slot, target_room_id',
+            'details': {'code': 'MISSING_FIELDS'}
+        }), 400
+
+    try:
+        target_start_slot = int(target_start_slot)
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'message': 'Invalid target_start_slot number', 'details': {'code': 'INVALID_SLOT'}}), 400
+
+    success, message, details = adjuster.execute_move(
+        engine, session_id, target_day, target_start_slot, target_room_id, app_data
+    )
+    if not success:
+        return jsonify({'status': 'error', 'message': message, 'details': details}), 400
+
+    return jsonify({
+        'status': 'ok',
+        'message': message,
+        'details': details
+    })
+
+
+@app.route('/api/timetable/swap', methods=['POST'])
+def api_execute_swap():
+    engine = _get_or_restore_engine()
+    if not engine or not app_data.get('result'):
+        return jsonify({'status': 'error', 'message': 'No generated timetable found', 'details': {'code': 'NO_TIMETABLE'}}), 400
+
+    data = request.get_json(silent=True) or {}
+    session_a_id = data.get('session_a_id')
+    session_b_id = data.get('session_b_id')
+
+    if not session_a_id or not session_b_id:
+        return jsonify({'status': 'error', 'message': 'Both session_a_id and session_b_id are required'}), 400
+
+    success, message, details = adjuster.execute_swap(
+        engine, session_a_id, session_b_id, app_data
+    )
+    if not success:
+        return jsonify({'status': 'error', 'message': message, 'details': details}), 400
+
+    return jsonify({
+        'status': 'ok',
+        'message': message,
+        'details': details
+    })
 
 
 @app.route('/api/timetable/unpublish', methods=['POST'])

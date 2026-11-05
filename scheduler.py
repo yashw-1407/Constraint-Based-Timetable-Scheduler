@@ -622,6 +622,7 @@ class SchedulingEngine:
             result.append({
                 'session_id': sess.id,
                 'day': assign.day,
+                'start_slot_index': assign.start_slot_index,
                 'time_start': start_ts.start_time,
                 'time_end': end_ts.end_time,
                 'section_id': sec.id,

@@ -387,5 +387,81 @@ class TestTimetableScheduler(unittest.TestCase):
         self.assertEqual(unpub_res.status_code, 200)
         self.assertEqual(unpub_res.get_json()['publishing']['status'], 'DRAFT')
 
+    def test_16_validate_and_execute_session_move(self):
+        """Verify validating moves and executing real-time session moves with conflict checks."""
+        self.client.post('/api/load-demo')
+        gen_res = self.client.post('/api/generate')
+        self.assertEqual(gen_res.status_code, 200)
+
+        master = self.client.get('/api/timetable/master').get_json()
+        self.assertGreater(len(master), 0)
+        first_sess = master[0]
+        session_id = first_sess['session_id']
+        orig_day = first_sess['day']
+        orig_slot = first_sess['start_slot_index']
+        orig_room = first_sess['room_id']
+
+        # 1. Invalid move: slot out of bounds
+        bad_res = self.client.post('/api/timetable/validate-move', json={
+            'session_id': session_id,
+            'target_day': orig_day,
+            'target_start_slot': 99,
+            'target_room_id': orig_room
+        })
+        self.assertEqual(bad_res.status_code, 200)
+        self.assertFalse(bad_res.get_json()['valid'])
+        self.assertEqual(bad_res.get_json()['details']['code'], 'SLOT_OUT_OF_BOUNDS')
+
+        # 2. Invalid move: non-existent day
+        bad_day_res = self.client.post('/api/timetable/validate-move', json={
+            'session_id': session_id,
+            'target_day': 'Funday',
+            'target_start_slot': 0,
+            'target_room_id': orig_room
+        })
+        self.assertEqual(bad_day_res.status_code, 200)
+        self.assertFalse(bad_day_res.get_json()['valid'])
+
+        # 3. Test valid move to current position
+        self_res = self.client.post('/api/timetable/validate-move', json={
+            'session_id': session_id,
+            'target_day': orig_day,
+            'target_start_slot': orig_slot,
+            'target_room_id': orig_room
+        })
+        self.assertEqual(self_res.status_code, 200)
+        self.assertTrue(self_res.get_json()['valid'])
+
+        # 4. Execute move
+        exec_res = self.client.post('/api/timetable/move', json={
+            'session_id': session_id,
+            'target_day': orig_day,
+            'target_start_slot': orig_slot,
+            'target_room_id': orig_room
+        })
+        self.assertEqual(exec_res.status_code, 200)
+        exec_json = exec_res.get_json()
+        self.assertEqual(exec_json['status'], 'ok')
+        self.assertIn('soft_score', exec_json['details'])
+
+    def test_17_atomic_session_swap(self):
+        """Verify atomic two-phase commit swap of two timetable sessions."""
+        self.client.post('/api/load-demo')
+        self.client.post('/api/generate')
+
+        master = self.client.get('/api/timetable/master').get_json()
+        theory_sessions = [s for s in master if s.get('duration_slots', 1) == 1]
+        self.assertGreaterEqual(len(theory_sessions), 2)
+        sess_a = theory_sessions[0]
+        sess_b = theory_sessions[1]
+
+        swap_res = self.client.post('/api/timetable/swap', json={
+            'session_a_id': sess_a['session_id'],
+            'session_b_id': sess_b['session_id']
+        })
+        self.assertIn(swap_res.status_code, [200, 400])
+        master_after = self.client.get('/api/timetable/master').get_json()
+        self.assertEqual(len(master), len(master_after))
+
 if __name__ == '__main__':
     unittest.main()

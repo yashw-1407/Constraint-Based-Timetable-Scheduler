@@ -605,10 +605,12 @@ function generateTimelineColumns(config, timeSlots) {
     return all_blocks;
 }
 
+let cachedMasterAssignments = [];
 async function fetchMasterAssignments() {
     const res = await fetch('/api/timetable/master');
     if (!res.ok) return null;
-    return await res.json();
+    cachedMasterAssignments = await res.json();
+    return cachedMasterAssignments;
 }
 
 function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlots) {
@@ -763,7 +765,7 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
                     if (rRoom && filterType !== 'room') meta.push(rRoom);
                     
                     return `
-                        <div class="tt-session-card">
+                        <div class="tt-session-card" data-session-id="${a.session_id}" style="cursor: pointer;" title="Click to adjust session placement">
                             <div class="tt-subj">${a.course_name} ${bBadge}</div>
                             <div class="tt-meta">${meta.join(' | ')}</div>
                         </div>
@@ -778,11 +780,18 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         tbody.appendChild(tr);
     });
       
-        table.appendChild(tbody);
+    table.appendChild(tbody);
     const scrollContainer = document.createElement('div');
     scrollContainer.className = 'table-scroll';
     scrollContainer.appendChild(table);
     container.appendChild(scrollContainer);
+
+    scrollContainer.querySelectorAll('.tt-session-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            const sid = e.currentTarget.getAttribute('data-session-id');
+            if (sid) openMoveModal(sid);
+        });
+    });
 }
 async function renderMasterView() {
     const config = await fetchConfigForViews();
@@ -1323,6 +1332,165 @@ async function saveTraceConfig() {
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Upload & Validate';
+            }
+        });
+    }
+})();
+
+// Interactive Schedule Move Modal
+async function openMoveModal(sessionId) {
+    const session = (cachedMasterAssignments || []).find(a => a.session_id === sessionId);
+    if (!session) {
+        showNotification('Session details not found in active schedule', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('modal-move-session');
+    const titleEl = document.getElementById('move-modal-course-title');
+    const metaEl = document.getElementById('move-modal-course-meta');
+    const posEl = document.getElementById('move-modal-current-pos');
+    const idInput = document.getElementById('move-session-id');
+    const daySelect = document.getElementById('move-target-day');
+    const slotSelect = document.getElementById('move-target-slot');
+    const roomSelect = document.getElementById('move-target-room');
+    const feedback = document.getElementById('move-feedback');
+
+    if (!modal) return;
+
+    idInput.value = sessionId;
+    titleEl.textContent = `${session.course_code}: ${session.course_name}`;
+    metaEl.textContent = `Section: ${session.section_name} | Batch: ${session.batch_name} | Faculty: ${session.faculty_name} | Duration: ${session.duration_slots || 1} period(s)`;
+    posEl.textContent = `Current Placement: ${session.day}, ${session.time_start} - ${session.time_end} in ${session.room_name}`;
+    if (feedback) feedback.style.display = 'none';
+
+    try {
+        const [config, timeSlotsRes, roomsRes] = await Promise.all([
+            fetchConfigForViews(),
+            fetch('/api/time-slots'),
+            fetch('/api/rooms')
+        ]);
+        const timeSlots = await timeSlotsRes.json();
+        const rooms = await roomsRes.json();
+
+        daySelect.innerHTML = (config.working_days || []).map(d =>
+            `<option value="${d}" ${d === session.day ? 'selected' : ''}>${d}</option>`
+        ).join('');
+
+        slotSelect.innerHTML = timeSlots.map((ts, idx) =>
+            `<option value="${idx}" ${idx === session.start_slot_index ? 'selected' : ''}>Period ${idx + 1} (${ts.start_time} - ${ts.end_time})</option>`
+        ).join('');
+
+        roomSelect.innerHTML = rooms.map(r =>
+            `<option value="${r.id}" ${r.id === session.room_id ? 'selected' : ''}>${r.name} (${r.room_type}, Cap: ${r.capacity})</option>`
+        ).join('');
+
+        modal.style.display = 'flex';
+    } catch (err) {
+        showNotification('Could not load modal configuration options', 'error');
+    }
+}
+
+(function initMoveModal() {
+    const modal = document.getElementById('modal-move-session');
+    const btnClose = document.getElementById('btn-close-move');
+    const btnCancel = document.getElementById('btn-cancel-move');
+    const btnCheck = document.getElementById('btn-check-move');
+    const form = document.getElementById('form-move-session');
+    const feedback = document.getElementById('move-feedback');
+    const btnApply = document.getElementById('btn-apply-move');
+
+    function closeModal() {
+        if (modal) modal.style.display = 'none';
+    }
+
+    if (btnClose) btnClose.addEventListener('click', closeModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    if (btnCheck) {
+        btnCheck.addEventListener('click', async () => {
+            const sessionId = document.getElementById('move-session-id').value;
+            const targetDay = document.getElementById('move-target-day').value;
+            const targetSlot = document.getElementById('move-target-slot').value;
+            const targetRoom = document.getElementById('move-target-room').value;
+
+            btnCheck.disabled = true;
+            btnCheck.textContent = 'Checking...';
+            try {
+                const res = await fetchJSON('/api/timetable/validate-move', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        target_day: targetDay,
+                        target_start_slot: parseInt(targetSlot, 10),
+                        target_room_id: targetRoom
+                    })
+                });
+
+                if (res.valid) {
+                    feedback.className = 'import-feedback-box feedback-success';
+                    feedback.innerHTML = `<strong>Conflict-Free:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Conflict Detected:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Validation Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                btnCheck.disabled = false;
+                btnCheck.textContent = 'Check Feasibility';
+            }
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const sessionId = document.getElementById('move-session-id').value;
+            const targetDay = document.getElementById('move-target-day').value;
+            const targetSlot = document.getElementById('move-target-slot').value;
+            const targetRoom = document.getElementById('move-target-room').value;
+
+            btnApply.disabled = true;
+            btnApply.textContent = 'Relocating Session...';
+
+            try {
+                const res = await fetchJSON('/api/timetable/move', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        target_day: targetDay,
+                        target_start_slot: parseInt(targetSlot, 10),
+                        target_room_id: targetRoom
+                    })
+                });
+
+                if (res.status === 'ok') {
+                    showNotification('Session relocated successfully', 'success');
+                    closeModal();
+                    fetchPublishingStatus();
+                    const activeBtn = document.querySelector('.view-btn.active');
+                    if (activeBtn) activeBtn.click();
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Cannot Apply Move:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Move Failed:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                btnApply.disabled = false;
+                btnApply.textContent = 'Apply Move';
             }
         });
     }

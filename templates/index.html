@@ -930,6 +930,53 @@ html, body { overflow-x: clip; width: 100%; }
         </div>
     </div>
 
+    <!-- Interactive Session Move Modal -->
+    <div id="modal-move-session" class="modal-backdrop" style="display: none;">
+        <div class="modal-card surface-card">
+            <div class="modal-header">
+                <h3>Adjust Session Placement</h3>
+                <button type="button" id="btn-close-move" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="session-info-callout" id="move-session-callout">
+                    <div id="move-modal-course-title" style="font-weight: 700; font-size: 14px;"></div>
+                    <div id="move-modal-course-meta" style="font-size: 12px; color: var(--color-text-secondary); margin-top: 2px;"></div>
+                    <div id="move-modal-current-pos" style="font-size: 12px; margin-top: 6px; padding: 6px 10px; background: var(--color-surface-subtle); border-radius: var(--radius-sm); border: 1px solid var(--color-border);"></div>
+                </div>
+
+                <form id="form-move-session" style="margin-top: 16px;">
+                    <input type="hidden" id="move-session-id">
+                    
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="move-target-day">Target Day</label>
+                            <select id="move-target-day" required></select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="move-target-slot">Target Start Period</label>
+                            <select id="move-target-slot" required></select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label for="move-target-room">Target Facility Room</label>
+                        <select id="move-target-room" required></select>
+                    </div>
+
+                    <div id="move-feedback" style="display: none; margin-top: 16px;"></div>
+
+                    <div class="form-actions" style="margin-top: 20px; justify-content: space-between;">
+                        <button type="button" id="btn-check-move" class="btn btn-secondary">Check Feasibility</button>
+                        <div style="display: flex; gap: var(--space-2);">
+                            <button type="button" id="btn-cancel-move" class="btn btn-outline">Cancel</button>
+                            <button type="submit" id="btn-apply-move" class="btn btn-primary">Apply Move</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>
