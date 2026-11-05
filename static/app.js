@@ -50,6 +50,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+    initImportModal();
+    initMoveModal();
+    initAuthModal();
     checkAuthStatus();
     fetchTerms();
     fetchPublishingStatus();
@@ -1302,7 +1305,7 @@ async function saveTraceConfig() {
 }
 
 // ── Excel Ingestion Modal & Controls ─────────────────────────────────────────
-(function () {
+function initImportModal() {
     const modal = document.getElementById('modal-import');
     const btnOpen = document.getElementById('btn-open-import');
     const btnClose = document.getElementById('btn-close-import');
@@ -1323,11 +1326,21 @@ async function saveTraceConfig() {
         if (modal) modal.style.display = 'none';
     }
 
-    if (btnOpen) btnOpen.addEventListener('click', openModal);
-    if (btnClose) btnClose.addEventListener('click', closeModal);
-    if (btnCancel) btnCancel.addEventListener('click', closeModal);
+    if (btnOpen && !btnOpen._hasListener) {
+        btnOpen._hasListener = true;
+        btnOpen.addEventListener('click', openModal);
+    }
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeModal);
+    }
 
-    if (modal) {
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
         });
@@ -1392,7 +1405,7 @@ async function saveTraceConfig() {
             }
         });
     }
-})();
+}
 
 // Interactive Schedule Move Modal
 async function openMoveModal(sessionId) {
@@ -1447,7 +1460,7 @@ async function openMoveModal(sessionId) {
     }
 }
 
-(function initMoveModal() {
+function initMoveModal() {
     const modal = document.getElementById('modal-move-session');
     const btnClose = document.getElementById('btn-close-move');
     const btnCancel = document.getElementById('btn-cancel-move');
@@ -1460,15 +1473,23 @@ async function openMoveModal(sessionId) {
         if (modal) modal.style.display = 'none';
     }
 
-    if (btnClose) btnClose.addEventListener('click', closeModal);
-    if (btnCancel) btnCancel.addEventListener('click', closeModal);
-    if (modal) {
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeModal);
+    }
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
         });
     }
 
-    if (btnCheck) {
+    if (btnCheck && !btnCheck._hasListener) {
+        btnCheck._hasListener = true;
         btnCheck.addEventListener('click', async () => {
             const sessionId = document.getElementById('move-session-id').value;
             const targetDay = document.getElementById('move-target-day').value;
@@ -1508,7 +1529,8 @@ async function openMoveModal(sessionId) {
         });
     }
 
-    if (form) {
+    if (form && !form._hasMoveSubmit) {
+        form._hasMoveSubmit = true;
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const sessionId = document.getElementById('move-session-id').value;
@@ -1551,7 +1573,7 @@ async function openMoveModal(sessionId) {
             }
         });
     }
-})();
+}
 
 // Authentication & Role Session Management
 let currentUser = null;
@@ -1607,17 +1629,36 @@ function closeAuthModal() {
     if (modal) modal.style.display = 'none';
 }
 
-(function initAuthModal() {
+function initAuthModal() {
     const modal = document.getElementById('modal-auth');
     const btnClose = document.getElementById('btn-close-auth');
     const btnCancel = document.getElementById('btn-cancel-auth');
     const form = document.getElementById('form-auth-login');
     const feedback = document.getElementById('auth-feedback');
     const quickBtns = document.querySelectorAll('.btn-quick-login');
+    const btnAuth = document.getElementById('btn-auth-action');
 
-    if (btnClose) btnClose.addEventListener('click', closeAuthModal);
-    if (btnCancel) btnCancel.addEventListener('click', closeAuthModal);
-    if (modal) {
+    if (btnAuth && !btnAuth._hasAuthListener) {
+        btnAuth._hasAuthListener = true;
+        btnAuth.addEventListener('click', () => {
+            if (currentUser) {
+                handleSignOut();
+            } else {
+                openAuthModal();
+            }
+        });
+    }
+
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeAuthModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeAuthModal);
+    }
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeAuthModal();
         });
@@ -1632,12 +1673,18 @@ function closeAuthModal() {
             if (userField && passField) {
                 userField.value = u;
                 passField.value = p;
-                form.requestSubmit();
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    const submitBtn = document.getElementById('btn-submit-auth');
+                    if (submitBtn) submitBtn.click();
+                }
             }
         });
     });
 
-    if (form) {
+    if (form && !form._hasAuthSubmit) {
+        form._hasAuthSubmit = true;
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('auth-username').value.trim();
@@ -1674,4 +1721,9 @@ function closeAuthModal() {
             }
         });
     }
-})();
+}
+
+// Ensure modals are bound immediately
+initImportModal();
+initMoveModal();
+initAuthModal();

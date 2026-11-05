@@ -803,94 +803,6 @@ html, body { overflow-x: clip; width: 100%; }
 
     <div id="notification" class="notification hidden" role="status" aria-live="polite"></div>
 
-    <script src="/static/app.js"></script>
-
-    <script>
-        // Pre-Generate Summary Controller
-        (function () {
-            const btnGen = document.getElementById('btn-generate');
-            const btnConf = document.getElementById('btn-confirm-generate');
-            const btnCancel = document.getElementById('btn-cancel-generate');
-            const panel = document.getElementById('pre-gen-summary');
-            const grid = document.getElementById('summary-grid');
-            const warnings = document.getElementById('summary-warnings');
-            const controls = document.querySelector('.generate-controls');
-
-            let _skipSummary = false;
-
-            function statTile(label, value, variant) {
-                return '<div class="stat-tile ' + (variant || 'tile-default') + '">' +
-                        '<div class="stat-tile-value">' + value + '</div>' +
-                        '<div class="stat-tile-label">' + label + '</div>' +
-                    '</div>';
-            }
-
-            if (btnGen) {
-                btnGen.addEventListener('click', async (e) => {
-                    if (_skipSummary) { _skipSummary = false; return; }
-
-                    e.stopImmediatePropagation();
-                    try {
-                        const res = await fetch('/api/summary');
-                        const data = await res.json();
-
-                        if (!data.config_set) {
-                            alert('Please save a configuration first in the Configuration tab.');
-                            return;
-                        }
-                        if (data.courses === 0) {
-                            alert('No courses defined. Please add courses before generating.');
-                            return;
-                        }
-
-                        grid.innerHTML = [
-                            statTile('Sections', data.sections, 'tile-primary'),
-                            statTile('Batches', data.batches, 'tile-primary'),
-                            statTile('Faculty', data.faculty, 'tile-primary'),
-                            statTile('Theory Rooms', data.theory_rooms, 'tile-success'),
-                            statTile('Lab Rooms', data.lab_rooms, 'tile-success'),
-                            statTile('Courses', data.courses, 'tile-accent'),
-                            statTile('Theory Sessions / week', data.theory_sessions_per_week, 'tile-warning'),
-                            statTile('Lab Sessions / week', data.lab_sessions_per_week, 'tile-warning'),
-                            statTile('Total Hours / week', data.total_weekly_session_hours, 'tile-danger'),
-                            statTile('Available Slots / week', data.available_slots_per_week, 'tile-muted'),
-                        ].join('');
-
-                        let w = '';
-                        if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9) {
-                            w += '<p class="summary-warning-item warning-danger">Warning: Total weekly session hours approach or exceed total available slots. Solver execution may fail.</p>';
-                        }
-                        if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0) {
-                            w += '<p class="summary-warning-item warning-caution">Warning: Lab sessions exist but no Lab facilities are configured.</p>';
-                        }
-                        warnings.innerHTML = w;
-
-                        panel.style.display = 'block';
-                        if (controls) controls.style.display = 'none';
-                    } catch (err) {
-                        alert('Could not load summary: ' + err.message);
-                    }
-                }, true);
-            }
-
-            if (btnCancel) {
-                btnCancel.addEventListener('click', () => {
-                    panel.style.display = 'none';
-                    if (controls) controls.style.display = '';
-                });
-            }
-
-            if (btnConf) {
-                btnConf.addEventListener('click', () => {
-                    panel.style.display = 'none';
-                    if (controls) controls.style.display = '';
-                    _skipSummary = true;
-                    document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                });
-            }
-        })();
-    </script>
-
     <!-- Excel Ingestion Modal -->
     <div id="modal-import" class="modal-backdrop" style="display: none;">
         <div class="modal-card surface-card">
@@ -1004,7 +916,7 @@ html, body { overflow-x: clip; width: 100%; }
                     </div>
                 </div>
 
-                <form id="form-auth-login">
+                <form id="form-auth-login" onsubmit="return false;">
                     <div class="form-group">
                         <label for="auth-username">Username</label>
                         <input type="text" id="auth-username" required autocomplete="username">
@@ -1024,6 +936,94 @@ html, body { overflow-x: clip; width: 100%; }
             </div>
         </div>
     </div>
+
+    <script src="/static/app.js"></script>
+
+    <script>
+        // Pre-Generate Summary Controller
+        (function () {
+            const btnGen = document.getElementById('btn-generate');
+            const btnConf = document.getElementById('btn-confirm-generate');
+            const btnCancel = document.getElementById('btn-cancel-generate');
+            const panel = document.getElementById('pre-gen-summary');
+            const grid = document.getElementById('summary-grid');
+            const warnings = document.getElementById('summary-warnings');
+            const controls = document.querySelector('.generate-controls');
+
+            let _skipSummary = false;
+
+            function statTile(label, value, variant) {
+                return '<div class="stat-tile ' + (variant || 'tile-default') + '">' +
+                        '<div class="stat-tile-value">' + value + '</div>' +
+                        '<div class="stat-tile-label">' + label + '</div>' +
+                    '</div>';
+            }
+
+            if (btnGen) {
+                btnGen.addEventListener('click', async (e) => {
+                    if (_skipSummary) { _skipSummary = false; return; }
+
+                    e.stopImmediatePropagation();
+                    try {
+                        const res = await fetch('/api/summary');
+                        const data = await res.json();
+
+                        if (!data.config_set) {
+                            alert('Please save a configuration first in the Configuration tab.');
+                            return;
+                        }
+                        if (data.courses === 0) {
+                            alert('No courses defined. Please add courses before generating.');
+                            return;
+                        }
+
+                        grid.innerHTML = [
+                            statTile('Sections', data.sections, 'tile-primary'),
+                            statTile('Batches', data.batches, 'tile-primary'),
+                            statTile('Faculty', data.faculty, 'tile-primary'),
+                            statTile('Theory Rooms', data.theory_rooms, 'tile-success'),
+                            statTile('Lab Rooms', data.lab_rooms, 'tile-success'),
+                            statTile('Courses', data.courses, 'tile-accent'),
+                            statTile('Theory Sessions / week', data.theory_sessions_per_week, 'tile-warning'),
+                            statTile('Lab Sessions / week', data.lab_sessions_per_week, 'tile-warning'),
+                            statTile('Total Hours / week', data.total_weekly_session_hours, 'tile-danger'),
+                            statTile('Available Slots / week', data.available_slots_per_week, 'tile-muted'),
+                        ].join('');
+
+                        let w = '';
+                        if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9) {
+                            w += '<p class="summary-warning-item warning-danger">Warning: Total weekly session hours approach or exceed total available slots. Solver execution may fail.</p>';
+                        }
+                        if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0) {
+                            w += '<p class="summary-warning-item warning-caution">Warning: Lab sessions exist but no Lab facilities are configured.</p>';
+                        }
+                        warnings.innerHTML = w;
+
+                        panel.style.display = 'block';
+                        if (controls) controls.style.display = 'none';
+                    } catch (err) {
+                        alert('Could not load summary: ' + err.message);
+                    }
+                }, true);
+            }
+
+            if (btnCancel) {
+                btnCancel.addEventListener('click', () => {
+                    panel.style.display = 'none';
+                    if (controls) controls.style.display = '';
+                });
+            }
+
+            if (btnConf) {
+                btnConf.addEventListener('click', () => {
+                    panel.style.display = 'none';
+                    if (controls) controls.style.display = '';
+                    _skipSummary = true;
+                    document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                });
+            }
+        })();
+    </script>
 
 </body>
 
