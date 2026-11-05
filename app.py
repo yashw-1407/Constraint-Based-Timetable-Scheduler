@@ -10,7 +10,7 @@ Serves the single-page frontend and provides a JSON API for:
 All data is stored in-memory (no database required for the MVP).
 """
 
-from flask import Flask, jsonify, request, render_template, send_file, session
+from flask import Flask, jsonify, request, render_template, send_file, session, Response
 import os
 import io
 import secrets
@@ -23,7 +23,12 @@ from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
 from constraints import validate_timetable
 from demo_data import get_demo_data
-from database import init_db, load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS, verify_password, hash_password, get_default_users
+from database import (
+    init_db, load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS,
+    verify_password, hash_password, get_default_users,
+    get_schedule_versions, create_schedule_snapshot, restore_schedule_version
+)
+from calendar_feed import generate_faculty_ical
 import importer
 import exporter
 import adjuster
@@ -1092,6 +1097,119 @@ def unpublish_timetable():
     app_data['publishing'] = pub
     save_data(app_data)
     return jsonify({'status': 'ok', 'publishing': pub})
+
+
+@app.route('/api/timetable/versions', methods=['GET'])
+@login_required
+def api_get_schedule_versions():
+    term_id = request.args.get('term_id') or app_data.get('active_term_id')
+    versions = get_schedule_versions(term_id)
+    return jsonify({'status': 'ok', 'versions': versions})
+
+
+@app.route('/api/timetable/versions/snapshot', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
+def api_create_schedule_snapshot():
+    if not app_data.get('result') or not app_data['result'].get('assignments_data'):
+        return jsonify({'error': 'No generated schedule available to snapshot', 'code': 'NO_TIMETABLE'}), 400
+
+    data = request.get_json(silent=True) or {}
+    from datetime import datetime, timezone
+    default_tag = datetime.now(timezone.utc).strftime('v%Y%m%d_%H%M%S')
+    version_tag = data.get('version_tag', '').strip() or default_tag
+    note = data.get('note', '').strip() or 'Manual schedule snapshot'
+
+    user = session.get('user', {})
+    user_id = user.get('id') if isinstance(user, dict) else None
+
+    try:
+        snapshot = create_schedule_snapshot(
+            academic_term_id=app_data.get('active_term_id', 'term_2026_fall'),
+            version_tag=version_tag,
+            note=note,
+            user_id=user_id,
+            app_data=app_data
+        )
+        return jsonify({'status': 'ok', 'message': 'Snapshot created', 'version': snapshot})
+    except Exception as e:
+        return jsonify({'error': f'Failed to create snapshot: {str(e)}', 'code': 'INTERNAL_ERROR'}), 500
+
+
+@app.route('/api/timetable/versions/<int:version_id>/restore', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
+def api_restore_schedule_version(version_id):
+    try:
+        success, message = restore_schedule_version(version_id, app_data)
+        if not success:
+            return jsonify({'status': 'error', 'message': message, 'code': 'NOT_FOUND'}), 404
+
+        return jsonify({
+            'status': 'ok',
+            'message': message,
+            'result': {
+                'status': app_data['result'].get('status', 'SUCCESS'),
+                'soft_score': app_data['result'].get('soft_score'),
+                'assignments_count': len(app_data['result'].get('assignments_data', []))
+            }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Rollback failed: {str(e)}', 'code': 'INTERNAL_ERROR'}), 500
+
+
+@app.route('/api/faculty/<faculty_id>/calendar.ics', methods=['GET'])
+def api_faculty_calendar_ics(faculty_id):
+    fac = next((f for f in app_data.get('faculty', []) if f.id == faculty_id), None)
+    if not fac:
+        return jsonify({'error': 'Faculty member not found'}), 404
+
+    pub = app_data.get('publishing') or {}
+    is_published = pub.get('is_published', False)
+    user = session.get('user')
+
+    if not is_published and not user:
+        return jsonify({'error': 'Timetable is unpublished. Authentication required.', 'code': 'UNAUTHORIZED'}), 401
+
+    if not is_published and user and user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        user_fac_id = user.get('faculty_id') or user.get('id')
+        if user_fac_id != faculty_id and user.get('role') == UserRole.STUDENT:
+            return jsonify({'error': 'Access denied to unpublished faculty schedule', 'code': 'FORBIDDEN'}), 403
+
+    if not app_data.get('config') or not app_data.get('result'):
+        return jsonify({'error': 'No timetable available'}), 400
+
+    assignments = []
+    courses_by_id = {c.id: c for c in app_data.get('courses', [])}
+
+    for a in app_data['result'].get('assignments_data', []):
+        sess_id = a.get('session_id', '')
+        c = next((crs for cid, crs in courses_by_id.items() if sess_id.startswith(cid)), None)
+        if c and (faculty_id in c.faculty_ids or faculty_id in getattr(c, 'assistant_faculty_ids', [])):
+            assignments.append(a)
+
+    rooms_by_id = {r.id: r for r in app_data.get('rooms', [])}
+    sections_by_id = {s.id: s for s in app_data.get('sections', [])}
+    term_name = pub.get('term') or app_data.get('active_term_id', 'Academic Term')
+
+    ics_content = generate_faculty_ical(
+        faculty=fac,
+        assignments=assignments,
+        courses_by_id=courses_by_id,
+        rooms_by_id=rooms_by_id,
+        sections_by_id=sections_by_id,
+        config=app_data['config'],
+        term_name=term_name
+    )
+
+    return Response(
+        ics_content,
+        mimetype='text/calendar; charset=utf-8',
+        headers={
+            'Content-Disposition': f'inline; filename="faculty_{faculty_id}_schedule.ics"',
+            'Cache-Control': 'no-cache'
+        }
+    )
 
 
 @app.route('/api/generate-multiple', methods=['POST'])

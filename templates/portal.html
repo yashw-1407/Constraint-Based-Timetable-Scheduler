@@ -159,6 +159,7 @@
 
             <div class="actions">
                 <input type="text" id="portal-search-box" class="portal-search-input" placeholder="Search subject, faculty, room…" aria-label="Search timetable">
+                <a id="portal-btn-ics" class="btn btn-outline btn-sm" style="display: none; text-decoration: none;" target="_blank">Subscribe Calendar (.ics)</a>
                 <a href="/api/export/excel" class="btn btn-primary btn-sm" download>Export Excel</a>
                 <button type="button" class="btn btn-outline btn-sm" onclick="window.print()">Print</button>
             </div>
@@ -344,6 +345,16 @@
 
                 const selector = document.getElementById('portal-entity-selector');
                 const selectedVal = selector ? selector.value : null;
+
+                const btnIcs = document.getElementById('portal-btn-ics');
+                if (btnIcs) {
+                    if (activeView === 'faculty' && selectedVal) {
+                        btnIcs.style.display = 'inline-flex';
+                        btnIcs.href = `/api/faculty/${encodeURIComponent(selectedVal)}/calendar.ics`;
+                    } else {
+                        btnIcs.style.display = 'none';
+                    }
+                }
 
                 let filtered = allAssignments;
                 if (activeView === 'section' && selectedVal) {

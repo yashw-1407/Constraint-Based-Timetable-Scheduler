@@ -685,3 +685,174 @@ def swap_assignments_in_db(academic_term_id: str, session_id_1: str, move_1: dic
         except Exception as e:
             db.session.rollback()
             raise e
+
+def get_schedule_versions(academic_term_id: str = None):
+    """Retrieve audit history of schedule versions for an academic term."""
+    with _lock, db_context():
+        query = db.session.query(DBScheduleVersion)
+        if academic_term_id:
+            query = query.filter_by(academic_term_id=academic_term_id)
+        versions = query.order_by(DBScheduleVersion.id.desc()).all()
+        
+        result = []
+        for v in versions:
+            assign_count = 0
+            if v.assignments_json:
+                try:
+                    assign_count = len(json.loads(v.assignments_json))
+                except Exception:
+                    pass
+            result.append({
+                'id': v.id,
+                'academic_term_id': v.academic_term_id,
+                'version_tag': v.version_tag,
+                'note': v.note,
+                'soft_score': v.soft_score,
+                'created_by': v.created_by,
+                'created_at': v.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if v.created_at else None,
+                'assignment_count': assign_count
+            })
+        return result
+
+def create_schedule_snapshot(academic_term_id: str, version_tag: str, note: str = None, user_id: str = None, app_data: dict = None):
+    """Create an immutable named snapshot of current assignments and quality score."""
+    with _lock, db_context():
+        try:
+            res = (app_data or {}).get('result') or {}
+            assignments_data = res.get('assignments_data', [])
+            if not assignments_data:
+                # Query directly from DB
+                db_assigns = db.session.query(DBTimetableAssignment).filter_by(
+                    academic_term_id=academic_term_id, variant_index=0
+                ).all()
+                assignments_data = [
+                    {
+                        'session_id': a.session_id,
+                        'day': a.day,
+                        'start_slot_index': a.start_slot_index,
+                        'room_id': a.room_id
+                    } for a in db_assigns
+                ]
+
+            soft_score = None
+            raw_soft = res.get('soft_score')
+            if isinstance(raw_soft, dict):
+                soft_score = float(raw_soft.get('percentage', raw_soft.get('total_score', 0.0)))
+            elif isinstance(raw_soft, (int, float)):
+                soft_score = float(raw_soft)
+
+            snapshot = DBScheduleVersion(
+                academic_term_id=academic_term_id,
+                version_tag=version_tag,
+                note=note,
+                soft_score=soft_score,
+                created_by=user_id,
+                assignments_json=json.dumps(assignments_data),
+                result_json=json.dumps(res) if res else None
+            )
+            db.session.add(snapshot)
+            db.session.commit()
+
+            return {
+                'id': snapshot.id,
+                'academic_term_id': snapshot.academic_term_id,
+                'version_tag': snapshot.version_tag,
+                'note': snapshot.note,
+                'soft_score': snapshot.soft_score,
+                'created_at': snapshot.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if snapshot.created_at else None,
+                'assignment_count': len(assignments_data)
+            }
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+def restore_schedule_version(version_id: int, app_data: dict):
+    """Restore a historical schedule version to active operational assignments."""
+    with _lock, db_context():
+        try:
+            snapshot = db.session.get(DBScheduleVersion, version_id)
+            if not snapshot:
+                return False, "Schedule version not found."
+
+            academic_term_id = snapshot.academic_term_id
+            assignments_data = json.loads(snapshot.assignments_json) if snapshot.assignments_json else []
+
+            # Clear current assignments for this term
+            db.session.query(DBTimetableAssignment).filter_by(academic_term_id=academic_term_id).delete()
+
+            # Map current courses and sections
+            courses_by_id = {c.id: c for c in app_data.get('courses', [])}
+            sections_by_id = {s.id: s for s in app_data.get('sections', [])}
+
+            for a in assignments_data:
+                sess_id = a.get('session_id', '')
+                c_id = None
+                s_id = None
+                for cid in courses_by_id:
+                    if sess_id.startswith(cid):
+                        c_id = cid
+                        break
+                for sid in sections_by_id:
+                    if f"_{sid}_" in sess_id or sess_id.endswith(f"_{sid}"):
+                        s_id = sid
+                        break
+
+                db.session.add(DBTimetableAssignment(
+                    academic_term_id=academic_term_id,
+                    session_id=sess_id,
+                    course_id=c_id,
+                    section_id=s_id,
+                    day=a.get('day'),
+                    start_slot_index=int(a.get('start_slot_index', 0)),
+                    room_id=a.get('room_id'),
+                    variant_index=0
+                ))
+
+            # Update app_data['result']
+            result_dict = {}
+            if snapshot.result_json:
+                try:
+                    result_dict = json.loads(snapshot.result_json)
+                except Exception:
+                    pass
+
+            result_dict['status'] = 'SUCCESS'
+            result_dict['assignments_data'] = assignments_data
+            if snapshot.soft_score is not None and 'soft_score' not in result_dict:
+                result_dict['soft_score'] = {'total_score': snapshot.soft_score}
+
+            app_data['result'] = result_dict
+
+            # Restore engine
+            if app_data.get('config') and app_data.get('courses'):
+                try:
+                    from scheduler import SchedulingEngine
+                    eng = SchedulingEngine(
+                        app_data['config'],
+                        app_data['courses'],
+                        app_data['rooms'],
+                        app_data['faculty'],
+                        app_data['sections'],
+                        app_data.get('batches', [])
+                    )
+                    eng.load_assignments_data(assignments_data)
+                    app_data['engine'] = eng
+                    result_dict['assignments'] = eng._format_assignments()
+                except Exception as ex:
+                    print(f"Warning restoring engine during rollback: {ex}")
+
+            # Mark publishing state as modified / draft
+            if app_data.get('publishing'):
+                app_data['publishing']['status'] = 'DRAFT'
+                app_data['publishing']['modified_after_publish'] = True
+                pub = db.session.query(DBTimetablePublication).filter_by(academic_term_id=academic_term_id).first()
+                if pub:
+                    pub.status = 'DRAFT'
+
+            db.session.commit()
+            _save_json_backup(app_data)
+
+            return True, f"Successfully restored timetable to version {snapshot.version_tag}."
+        except Exception as e:
+            db.session.rollback()
+            raise e

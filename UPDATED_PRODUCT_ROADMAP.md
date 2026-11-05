@@ -90,19 +90,22 @@ With **Milestone A complete and verified**, the development path proceeds to the
 
 ---
 
-### Milestone C: Schedule Snapshot Versioning & Faculty Calendar Feeds [RECOMMENDED NEXT STEP]
-- **Objective:** Provide auditable change governance for schedulers and mobile calendar integration for instructors.
-- **Scope of Work:**
-  1. **Schedule Version History & Rollback:** Wire `schedule_versions` table into the UI, allowing administrators to view changelogs and revert to previous versions via `POST /api/timetable/versions/<id>/restore`.
-  2. **Version History Drawer:** Add interactive version drawer in the Timetable Views tab showing previous publications and quality score differences.
-  3. **Faculty iCalendar (`.ics`) Feed:** Generate standard RFC 5545 iCalendar feeds (`GET /api/faculty/<id>/calendar.ics`) allowing professors to subscribe to their schedule directly in Google Calendar, Outlook, and Apple Calendar.
-- **Estimated Effort:** Medium (1–2 focused turns).
-- **Prerequisites:** Milestone A & B (Completed & Verified).
+### Milestone C: Schedule Snapshot Versioning & Faculty Calendar Feeds [COMPLETED & VERIFIED]
+- **Status:** **Completed & Verified**.
+- **Delivered:**
+  1. Implemented snapshot version listing (`GET /api/timetable/versions`), named snapshot capture (`POST /api/timetable/versions/snapshot`), and atomic rollback (`POST /api/timetable/versions/<id>/restore`) in `database.py` and `app.py`.
+  2. Integrated interactive "Version History" modal (`#modal-version-history`) into Timetable Views with quality score badges, session counts, and one-click rollback.
+  3. Created `calendar_feed.py` implementing RFC 5545 iCalendar stream generation (`GET /api/faculty/<id>/calendar.ics`) with recurring events (`RRULE:FREQ=WEEKLY`), course details, room allocations, and access control.
+  4. Added "Subscribe Calendar (.ics)" button across administrative and public portal faculty schedule views.
+  5. Added 10 automated integration tests in `test_milestone_c.py`. All 61 platform tests pass (100% pass rate).
 
 ---
 
 ## 4. Next Step Recommendation
 
-**Recommendation:** Proceed with **Milestone B: Relational Persistence & Multi-Term Schedule Partitioning**.
-
-*Awaiting approval to begin Milestone B implementation.*
+**Recommendation:** The core academic scheduling platform (Milestones A, B, and C) is now fully realized, robust, and verified with 61 automated tests. The next logical enhancements are:
+1. **Milestone D: Faculty Self-Service Portal & Change Notification System:**
+   - Dedicated authenticated faculty portal (`/faculty/dashboard`) showing individual weekly workload metrics, room details, and student rosters.
+   - Schedule change alert logs summarizing moved or rescheduled sessions.
+2. **Milestone E: Institutional Multi-Department Reporting:**
+   - Dean/HOD cross-department resource utilization summaries and conflict-free room sharing dashboards.

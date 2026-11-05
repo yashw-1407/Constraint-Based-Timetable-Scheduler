@@ -584,6 +584,9 @@ html, body { overflow-x: clip; width: 100%; }
                 </div>
                 <div class="actions">
                     <span id="views-lifecycle-badge" class="lifecycle-chip chip-draft" style="align-self: center;">Draft</span>
+                    <button id="btn-version-history" class="btn btn-outline" style="display: none;">
+                        Version History
+                    </button>
                     <button id="btn-publish-schedule" class="btn btn-success" style="display: none;">
                         Publish Schedule
                     </button>
@@ -609,6 +612,9 @@ html, body { overflow-x: clip; width: 100%; }
 
                 <div id="view-controls" class="view-controls-wrap">
                     <select id="view-selector" class="view-dropdown" style="display: none;"></select>
+                    <a id="btn-faculty-ics" class="btn btn-outline" style="display: none; font-size: 12px; padding: 6px 12px; text-decoration: none;" target="_blank">
+                        Subscribe Calendar (.ics)
+                    </a>
                 </div>
             </div>
 
@@ -934,6 +940,55 @@ html, body { overflow-x: clip; width: 100%; }
                         <button type="submit" id="btn-submit-auth" class="btn btn-primary">Sign In</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version History Modal -->
+    <div id="modal-version-history" class="modal-backdrop" style="display: none;">
+        <div class="modal-card surface-card" style="max-width: 740px; width: 90%;">
+            <div class="modal-header">
+                <h3>Schedule Version History &amp; Snapshots</h3>
+                <button type="button" id="btn-close-version-history" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    View previous schedule snapshots, audit soft quality scores, or restore an earlier version.
+                </p>
+
+                <!-- Create snapshot sub-form -->
+                <div style="background: var(--color-surface-subtle); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); margin-bottom: 16px;">
+                    <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px;">Create New Schedule Snapshot</div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <input type="text" id="snapshot-tag-input" placeholder="Version tag (e.g. v1.1-adjusted)" style="flex: 1; min-width: 180px; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: 13px;">
+                        <input type="text" id="snapshot-note-input" placeholder="Snapshot note..." style="flex: 2; min-width: 200px; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: 13px;">
+                        <button type="button" id="btn-save-snapshot" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">Save Snapshot</button>
+                    </div>
+                </div>
+
+                <div id="version-history-feedback" style="display: none; margin-bottom: 12px;"></div>
+
+                <!-- Versions list table -->
+                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                    <table class="data-table" id="table-version-history" style="width: 100%; font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th>Version Tag</th>
+                                <th>Saved Date</th>
+                                <th>Note</th>
+                                <th>Score</th>
+                                <th>Sessions</th>
+                                <th style="text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="version-history-tbody">
+                            <tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading versions...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 16px;">
+                <button type="button" id="btn-dismiss-version-history" class="btn btn-outline">Close</button>
             </div>
         </div>
     </div>

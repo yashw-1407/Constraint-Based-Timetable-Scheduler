@@ -143,12 +143,22 @@ Testing was conducted directly against the live application and test suite. Key 
 - **Runtime Behavior:** State toggles between `DRAFT` and `PUBLISHED`. Draft schedules block unauthorized student access.
 - **Classification:** **Verified Complete**.
 
-### 2.10 Schedule Versioning
-- **Actual Implementation:** Pending Milestone C. Current implementation tracks single active publishing state.
-- **Backend Endpoints:** None.
-- **Frontend Integration:** None.
-- **Database Persistence:** Single state record in `database.json`.
-- **Classification:** **Partially Implemented (Single-state tracking only; revision snapshots planned for Milestone C)**.
+### 2.10 Schedule Versioning & Rollback Governance
+- **Actual Implementation:** Implemented via `db_models.py:DBScheduleVersion`, `database.py` snapshot/restore helpers, and `app.py`.
+- **Backend Endpoints:**
+  - `GET /api/timetable/versions`: Returns list of historical schedule versions with timestamp, creator, quality score, and session counts.
+  - `POST /api/timetable/versions/snapshot`: Creates a named snapshot of current assignments and quality score (`ADMIN`, `COORDINATOR`).
+  - `POST /api/timetable/versions/<int:version_id>/restore`: Atomically restores operational assignments and engine state from a historical snapshot (`ADMIN`, `COORDINATOR`).
+  - `GET /api/faculty/<id>/calendar.ics`: Generates live RFC 5545 iCalendar feed for external calendar subscriptions (Google Calendar, Outlook, Apple Calendar).
+- **Frontend Integration:**
+  - Interactive "Version History" modal (`#modal-version-history`) in Timetable Views with snapshot creation form, version table, quality badges, and one-click rollback buttons.
+  - "Subscribe Calendar (.ics)" button in both administrative and campus portal faculty views.
+- **Database Persistence:** Relational persistence in `schedule_versions` table and atomic synchronization with `timetable_assignments`.
+- **Authorization & Access:** Enforced on backend. Snapshot creation and rollback restricted to `ADMIN` and `COORDINATOR`.
+- **Error Handling:** Returns HTTP 404 for non-existent versions and HTTP 400 when snapshotting without a generated schedule.
+- **Automated Test Coverage:** Verified in `test_milestone_c.py` (10 passing tests).
+- **Runtime Behavior:** Fully operational. Rollbacks reconstruct engine state and update draft/publishing flags cleanly.
+- **Classification:** **Verified Complete**.
 
 ### 2.11 Multiple Timetable Candidates
 - **Actual Implementation:** `scheduler.py` implements `solve_multiple` utilizing random seed perturbations and Jaccard distance penalties for diversity.
@@ -251,7 +261,19 @@ test_dbms_integration.py:
   test_09_atomic_move_and_swap_persistence             -> PASS
   test_10_student_portal_persistence                   -> PASS
 
-Total: 51 passed, 0 failed, 0 errors.
+test_milestone_c.py:
+  test_01_get_schedule_versions_list                   -> PASS
+  test_02_create_schedule_snapshot                     -> PASS
+  test_03_snapshot_requires_auth_and_coordinator       -> PASS
+  test_04_restore_schedule_version_success             -> PASS
+  test_05_restore_nonexistent_version_returns_404      -> PASS
+  test_06_restore_invalidates_published_state          -> PASS
+  test_07_faculty_ical_feed_structure                  -> PASS
+  test_08_faculty_ical_feed_nonexistent_faculty_404    -> PASS
+  test_09_faculty_ical_unpublished_access_control      -> PASS
+  test_10_faculty_ical_published_public_access         -> PASS
+
+Total: 61 passed, 0 failed, 0 errors.
 ```
 
 ---

@@ -917,6 +917,9 @@ document.querySelectorAll('.view-btn').forEach(btn => {
         const btnExport = document.getElementById('btn-export-excel');
         if (btnExport) btnExport.style.display = 'inline-flex';
         
+        const btnIcs = document.getElementById('btn-faculty-ics');
+        if (btnIcs) btnIcs.style.display = 'none';
+
         if (view === 'master') {
             selector.style.display = 'none';
             await renderMasterView();
@@ -944,7 +947,13 @@ document.querySelectorAll('.view-btn').forEach(btn => {
                     opt.textContent = d.name || d.id;
                     selector.appendChild(opt);
                 });
-                selector.onchange = (ev) => renderFacultyView(ev.target.value);
+                selector.onchange = (ev) => {
+                    if (btnIcs) {
+                        btnIcs.style.display = ev.target.value ? 'inline-block' : 'none';
+                        btnIcs.href = `/api/faculty/${encodeURIComponent(ev.target.value)}/calendar.ics`;
+                    }
+                    renderFacultyView(ev.target.value);
+                };
             } else if (view === 'room') {
                 const res = await fetch('/api/rooms');
                 data = await res.json();
@@ -1107,6 +1116,11 @@ function updatePublishingUI(data) {
             btnUnpublish.style.display = 'none';
         }
     }
+
+    const btnVersion = document.getElementById('btn-version-history');
+    if (btnVersion) {
+        btnVersion.style.display = 'inline-block';
+    }
 }
 
 document.getElementById('btn-publish-schedule')?.addEventListener('click', async () => {
@@ -1126,6 +1140,107 @@ document.getElementById('btn-unpublish-schedule')?.addEventListener('click', asy
         updatePublishingUI(res);
     } catch (err) {
         showNotification('Failed to unpublish timetable: ' + err.message, 'error');
+    }
+});
+
+// Schedule Version History & Snapshots Controller
+const modalVersionHistory = document.getElementById('modal-version-history');
+const btnVersionHistory = document.getElementById('btn-version-history');
+const btnCloseVersionHistory = document.getElementById('btn-close-version-history');
+const btnDismissVersionHistory = document.getElementById('btn-dismiss-version-history');
+const btnSaveSnapshot = document.getElementById('btn-save-snapshot');
+const versionHistoryTbody = document.getElementById('version-history-tbody');
+
+function openVersionHistoryModal() {
+    if (modalVersionHistory) {
+        modalVersionHistory.style.display = 'flex';
+        loadVersionHistory();
+    }
+}
+
+function closeVersionHistoryModal() {
+    if (modalVersionHistory) {
+        modalVersionHistory.style.display = 'none';
+    }
+}
+
+btnVersionHistory?.addEventListener('click', openVersionHistoryModal);
+btnCloseVersionHistory?.addEventListener('click', closeVersionHistoryModal);
+btnDismissVersionHistory?.addEventListener('click', closeVersionHistoryModal);
+
+async function loadVersionHistory() {
+    if (!versionHistoryTbody) return;
+    versionHistoryTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading versions...</td></tr>';
+    try {
+        const res = await fetchJSON('/api/timetable/versions');
+        const versions = res.versions || [];
+        if (!versions.length) {
+            versionHistoryTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">No schedule snapshots saved yet. Use the form above to capture one.</td></tr>';
+            return;
+        }
+
+        versionHistoryTbody.innerHTML = versions.map(v => `
+            <tr>
+                <td style="font-weight: 600;"><code>${v.version_tag}</code></td>
+                <td style="color: var(--color-text-secondary);">${v.created_at || 'N/A'}</td>
+                <td>${v.note || '<span style="color: var(--color-text-muted);">None</span>'}</td>
+                <td><span class="badge ${v.soft_score >= 80 ? 'badge-success' : 'badge-warning'}">${v.soft_score !== null ? v.soft_score + '%' : 'N/A'}</span></td>
+                <td>${v.assignment_count}</td>
+                <td style="text-align: right;">
+                    <button type="button" class="btn btn-outline btn-sm btn-restore-version" data-id="${v.id}" data-tag="${v.version_tag}" style="padding: 4px 10px; font-size: 12px;">
+                        Restore
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        // Attach restore click handlers
+        versionHistoryTbody.querySelectorAll('.btn-restore-version').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const vId = e.target.dataset.id;
+                const vTag = e.target.dataset.tag;
+                if (!confirm(`Are you sure you want to rollback the active schedule to version ${vTag}?`)) {
+                    return;
+                }
+                try {
+                    const result = await fetchJSON(`/api/timetable/versions/${vId}/restore`, { method: 'POST' });
+                    showNotification(result.message || `Restored version ${vTag}`, 'success');
+                    closeVersionHistoryModal();
+                    if (typeof checkTimetablePublishStatus === 'function') checkTimetablePublishStatus();
+                    const activeTab = document.querySelector('.view-btn.active')?.dataset.view || 'master';
+                    if (activeTab === 'master' && typeof renderMasterView === 'function') renderMasterView();
+                } catch (err) {
+                    showNotification('Restore failed: ' + (err.message || 'Unknown error'), 'error');
+                }
+            });
+        });
+    } catch (err) {
+        versionHistoryTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-danger); padding: 16px;">Failed to load history: ${err.message}</td></tr>`;
+    }
+}
+
+btnSaveSnapshot?.addEventListener('click', async () => {
+    const tagInput = document.getElementById('snapshot-tag-input');
+    const noteInput = document.getElementById('snapshot-note-input');
+    const tag = (tagInput?.value || '').trim();
+    const note = (noteInput?.value || '').trim();
+
+    try {
+        const payload = {};
+        if (tag) payload.version_tag = tag;
+        if (note) payload.note = note;
+
+        const res = await fetchJSON('/api/timetable/versions/snapshot', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        showNotification(res.message || 'Schedule snapshot created successfully', 'success');
+        if (tagInput) tagInput.value = '';
+        if (noteInput) noteInput.value = '';
+        loadVersionHistory();
+    } catch (err) {
+        showNotification('Snapshot failed: ' + err.message, 'error');
     }
 });
 
