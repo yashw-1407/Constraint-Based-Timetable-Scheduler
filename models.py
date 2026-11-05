@@ -9,6 +9,25 @@ class RoomType:
     THEORY_ROOM = "THEORY_ROOM"
     LAB = "LAB"
 
+class UserRole:
+    ADMIN = "ADMIN"
+    COORDINATOR = "COORDINATOR"
+    FACULTY = "FACULTY"
+    STUDENT = "STUDENT"
+
+@dataclass
+class User:
+    id: str
+    username: str
+    password_hash: str
+    salt: str
+    role: str
+    name: str
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 @dataclass
 class AcademicTerm:
     id: str

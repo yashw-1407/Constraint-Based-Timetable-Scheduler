@@ -50,6 +50,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+    checkAuthStatus();
     fetchTerms();
     fetchPublishingStatus();
     const hash = (window.location.hash || '').replace('#', '');
@@ -1521,6 +1522,129 @@ async function openMoveModal(sessionId) {
             } finally {
                 btnApply.disabled = false;
                 btnApply.textContent = 'Apply Move';
+            }
+        });
+    }
+})();
+
+// Authentication & Role Session Management
+let currentUser = null;
+
+async function checkAuthStatus() {
+    try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) return;
+        const data = await res.json();
+        currentUser = data.authenticated ? data.user : null;
+        updateAuthHeaderUI();
+    } catch (e) {
+        console.warn('Could not check auth status:', e);
+    }
+}
+
+function updateAuthHeaderUI() {
+    const badge = document.getElementById('header-user-badge');
+    const btn = document.getElementById('btn-auth-action');
+    if (!badge || !btn) return;
+
+    if (currentUser) {
+        badge.textContent = `${currentUser.username} (${currentUser.role})`;
+        badge.className = 'lifecycle-chip chip-published';
+        badge.style.display = 'inline-block';
+        btn.textContent = 'Sign Out';
+        btn.onclick = handleSignOut;
+    } else {
+        badge.style.display = 'none';
+        btn.textContent = 'Sign In';
+        btn.onclick = openAuthModal;
+    }
+}
+
+async function handleSignOut() {
+    try {
+        await fetchJSON('/api/auth/logout', { method: 'POST' });
+        currentUser = null;
+        updateAuthHeaderUI();
+        showNotification('Signed out successfully', 'info');
+    } catch (e) {
+        showNotification('Sign out failed', 'error');
+    }
+}
+
+function openAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    if (modal) modal.style.display = 'none';
+}
+
+(function initAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    const btnClose = document.getElementById('btn-close-auth');
+    const btnCancel = document.getElementById('btn-cancel-auth');
+    const form = document.getElementById('form-auth-login');
+    const feedback = document.getElementById('auth-feedback');
+    const quickBtns = document.querySelectorAll('.btn-quick-login');
+
+    if (btnClose) btnClose.addEventListener('click', closeAuthModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeAuthModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeAuthModal();
+        });
+    }
+
+    quickBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const u = btn.getAttribute('data-username');
+            const p = btn.getAttribute('data-password');
+            const userField = document.getElementById('auth-username');
+            const passField = document.getElementById('auth-password');
+            if (userField && passField) {
+                userField.value = u;
+                passField.value = p;
+                form.requestSubmit();
+            }
+        });
+    });
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('auth-username').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const submitBtn = document.getElementById('btn-submit-auth');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Authenticating...';
+            if (feedback) feedback.style.display = 'none';
+
+            try {
+                const res = await fetchJSON('/api/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (res.status === 'ok') {
+                    currentUser = res.user;
+                    updateAuthHeaderUI();
+                    showNotification(`Welcome, ${res.user.name}!`, 'success');
+                    closeAuthModal();
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Error:</strong> ${res.error || 'Authentication failed'}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
             }
         });
     }

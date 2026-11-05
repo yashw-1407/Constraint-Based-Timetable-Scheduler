@@ -1,10 +1,31 @@
 import json
 import os
 import threading
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course, AcademicTerm, Department
+import hashlib
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, AcademicTerm, Department, User, UserRole
 
 DB_FILE = 'database.json'
 _lock = threading.Lock()
+
+def hash_password(password: str, salt: str = None) -> tuple:
+    if not salt:
+        salt = os.urandom(16).hex()
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+    return dk.hex(), salt
+
+def verify_password(password: str, password_hash: str, salt: str) -> bool:
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
+    return dk.hex() == password_hash
+
+def get_default_users():
+    admin_h, admin_s = hash_password('admin123', 'seededsaltadmin1')
+    coord_h, coord_s = hash_password('coord123', 'seededsaltcoord1')
+    fac_h, fac_s = hash_password('faculty123', 'seededsaltfaculty1')
+    return [
+        User(id='user_admin', username='admin', password_hash=admin_h, salt=admin_s, role=UserRole.ADMIN, name='System Administrator'),
+        User(id='user_coord', username='coordinator', password_hash=coord_h, salt=coord_s, role=UserRole.COORDINATOR, name='Academic Coordinator'),
+        User(id='user_faculty', username='faculty', password_hash=fac_h, salt=fac_s, role=UserRole.FACULTY, name='Faculty Member')
+    ]
 
 DEFAULT_TERMS = [
     AcademicTerm(id='term_2026_fall', name='Fall 2026-27 (Term 1)', academic_year='2026-27', semester_type='ODD', is_active=True),
@@ -33,6 +54,7 @@ def save_data(app_data):
             'terms': [t.to_dict() for t in app_data.get('terms', [])],
             'departments': [d.to_dict() for d in app_data.get('departments', [])],
             'active_term_id': app_data.get('active_term_id', 'term_2026_fall'),
+            'users': [u.to_dict() for u in app_data.get('users', [])],
         }
         temp_file = DB_FILE + '.tmp'
         with open(temp_file, 'w', encoding='utf-8') as f:
@@ -46,6 +68,7 @@ def load_data(app_data):
             app_data.setdefault('terms', [t for t in DEFAULT_TERMS])
             app_data.setdefault('departments', [d for d in DEFAULT_DEPARTMENTS])
             app_data.setdefault('active_term_id', 'term_2026_fall')
+            app_data.setdefault('users', get_default_users())
             return
         try:
             with open(DB_FILE, 'r', encoding='utf-8') as f:
@@ -67,5 +90,8 @@ def load_data(app_data):
             app_data['departments'] = loaded_depts if loaded_depts else [d for d in DEFAULT_DEPARTMENTS]
 
             app_data['active_term_id'] = data.get('active_term_id', 'term_2026_fall')
+
+            loaded_users = [User.from_dict(d) for d in data.get('users', [])]
+            app_data['users'] = loaded_users if loaded_users else get_default_users()
         except Exception as e:
             print(f"Error loading database: {e}")

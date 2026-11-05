@@ -10,21 +10,22 @@ Serves the single-page frontend and provides a JSON API for:
 All data is stored in-memory (no database required for the MVP).
 """
 
-from flask import Flask, jsonify, request, render_template, send_file
+from flask import Flask, jsonify, request, render_template, send_file, session
 import os
 import io
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType, AcademicTerm, Department
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType, AcademicTerm, Department, User, UserRole
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
 from constraints import validate_timetable
 from demo_data import get_demo_data
-from database import load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS
+from database import load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS, verify_password, hash_password, get_default_users
 import importer
 import exporter
 import adjuster
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'autoschedule-dev-secret-key-2026')
 
 # ---------------------------------------------------------------------------
 # In-memory application state
@@ -46,6 +47,7 @@ app_data = {
     'terms': [],             # List[AcademicTerm]
     'departments': [],       # List[Department]
     'active_term_id': 'term_2026_fall',
+    'users': [],             # List[User]
     'engine': None,          # SchedulingEngine (for view queries after generation)
     'result': None,          # dict from engine.solve()
 }
@@ -444,6 +446,107 @@ def handle_departments():
         app_data['departments'].append(new_dept)
         save_data(app_data)
         return jsonify({'status': 'ok', 'department': new_dept.to_dict()})
+
+
+# ---------------------------------------------------------------------------
+# Authentication & Role-Based Access Control API
+# ---------------------------------------------------------------------------
+@app.route('/api/auth/me', methods=['GET'])
+def get_current_user():
+    user = session.get('user')
+    if user:
+        return jsonify({
+            'authenticated': True,
+            'user': user
+        })
+    return jsonify({
+        'authenticated': False,
+        'user': None
+    })
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    if not app_data.get('users'):
+        app_data['users'] = get_default_users()
+
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+
+    user = next((u for u in app_data['users'] if u.username == username), None)
+    if not user or not verify_password(password, user.password_hash, user.salt):
+        return jsonify({'error': 'Invalid username or password'}), 401
+
+    user_info = {
+        'id': user.id,
+        'username': user.username,
+        'role': user.role,
+        'name': user.name
+    }
+    session['user'] = user_info
+    return jsonify({
+        'status': 'ok',
+        'message': f'Signed in successfully as {user.name}',
+        'user': user_info
+    })
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    session.pop('user', None)
+    return jsonify({'status': 'ok', 'message': 'Signed out successfully'})
+
+
+@app.route('/api/auth/users', methods=['GET', 'POST'])
+def manage_users():
+    if not app_data.get('users'):
+        app_data['users'] = get_default_users()
+
+    if request.method == 'GET':
+        users = [{
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'name': u.name
+        } for u in app_data['users']]
+        return jsonify(users)
+    elif request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        role = data.get('role', UserRole.COORDINATOR)
+        name = data.get('name') or username
+
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+
+        if any(u.username == username for u in app_data['users']):
+            return jsonify({'error': f"User '{username}' already exists"}), 400
+
+        p_hash, salt = hash_password(password)
+        new_user = User(
+            id=f"user_{len(app_data['users']) + 1}",
+            username=username,
+            password_hash=p_hash,
+            salt=salt,
+            role=role,
+            name=name
+        )
+        app_data['users'].append(new_user)
+        save_data(app_data)
+        return jsonify({
+            'status': 'ok',
+            'user': {
+                'id': new_user.id,
+                'username': new_user.username,
+                'role': new_user.role,
+                'name': new_user.name
+            }
+        })
 
 
 # ---------------------------------------------------------------------------
@@ -938,6 +1041,9 @@ def clear_data():
     """Reset all application state."""
     for key in app_data:
         app_data[key] = None if key in ('config', 'engine', 'result') else []
+    app_data['terms'] = [t for t in DEFAULT_TERMS]
+    app_data['departments'] = [d for d in DEFAULT_DEPARTMENTS]
+    app_data['users'] = get_default_users()
     save_data(app_data)
     return jsonify({'status': 'ok'})
 

@@ -525,5 +525,48 @@ class TestTimetableScheduler(unittest.TestCase):
                         (0x2300 <= cp <= 0x23FF) or (cp in [0x2B50, 0x200D, 0xFE0F, 0xFE0E]))
             self.assertFalse(is_emoji, f"Found emoji {ch} in portal HTML")
 
+    def test_21_user_authentication_flow(self):
+        """Verify role authentication, password verification, session state, and logout."""
+        # 1. Initially unauthenticated
+        me_res = self.client.get('/api/auth/me')
+        self.assertEqual(me_res.status_code, 200)
+        self.assertFalse(me_res.get_json()['authenticated'])
+
+        # 2. Login with incorrect credentials fails
+        bad_login = self.client.post('/api/auth/login', json={'username': 'admin', 'password': 'wrongpassword'})
+        self.assertEqual(bad_login.status_code, 401)
+
+        # 3. Login with correct credentials succeeds
+        login_res = self.client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        self.assertEqual(login_res.status_code, 200)
+        user_data = login_res.get_json()['user']
+        self.assertEqual(user_data['username'], 'admin')
+        self.assertEqual(user_data['role'], 'ADMIN')
+
+        # 4. /api/auth/me returns authenticated user
+        me_auth = self.client.get('/api/auth/me').get_json()
+        self.assertTrue(me_auth['authenticated'])
+        self.assertEqual(me_auth['user']['role'], 'ADMIN')
+
+        # 5. List users
+        users_res = self.client.get('/api/auth/users')
+        self.assertEqual(users_res.status_code, 200)
+        self.assertGreaterEqual(len(users_res.get_json()), 3)
+
+        # 6. Create new coordinator user
+        new_user_res = self.client.post('/api/auth/users', json={
+            'username': 'new_coord',
+            'password': 'coordpassword456',
+            'role': 'COORDINATOR',
+            'name': 'Assistant Coordinator'
+        })
+        self.assertEqual(new_user_res.status_code, 200)
+
+        # 7. Logout clears session
+        logout_res = self.client.post('/api/auth/logout')
+        self.assertEqual(logout_res.status_code, 200)
+        me_logged_out = self.client.get('/api/auth/me').get_json()
+        self.assertFalse(me_logged_out['authenticated'])
+
 if __name__ == '__main__':
     unittest.main()
