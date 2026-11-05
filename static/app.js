@@ -50,6 +50,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+    fetchTerms();
     fetchPublishingStatus();
     const hash = (window.location.hash || '').replace('#', '');
     if (hash) {
@@ -57,6 +58,35 @@ window.addEventListener('DOMContentLoaded', () => {
         if (btn) btn.click();
     }
 });
+
+// Academic Terms Management
+async function fetchTerms() {
+    try {
+        const res = await fetch('/api/terms');
+        if (!res.ok) return;
+        const data = await res.json();
+        const selector = document.getElementById('header-term-select');
+        if (!selector) return;
+
+        selector.innerHTML = (data.terms || []).map(t =>
+            `<option value="${t.id}" ${t.id === data.active_term_id ? 'selected' : ''}>${t.name}</option>`
+        ).join('');
+
+        selector.onchange = async (e) => {
+            const termId = e.target.value;
+            try {
+                const actRes = await fetchJSON(`/api/terms/activate/${termId}`, { method: 'POST' });
+                showNotification(`Active semester set to ${actRes.active_term ? actRes.active_term.name : termId}`, 'info');
+                fetchPublishingStatus();
+                loadTimetableViewsInit();
+            } catch (err) {
+                showNotification('Failed to switch academic term', 'error');
+            }
+        };
+    } catch (e) {
+        console.warn('Could not load terms:', e);
+    }
+}
 
 // Load data based on tab
 function loadTabData(tabId) {

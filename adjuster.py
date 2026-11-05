@@ -284,3 +284,4 @@ def _diagnose_move_conflict(
         return f"Cohort collision: Section/Batch is engaged in another class during {target_day} ({times})."
 
     return f"Hard constraint violation ({fail_reason}) on {target_day} ({times})."
+

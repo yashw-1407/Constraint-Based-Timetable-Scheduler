@@ -13,13 +13,13 @@ All data is stored in-memory (no database required for the MVP).
 from flask import Flask, jsonify, request, render_template, send_file
 import os
 import io
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType, AcademicTerm, Department
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
 from constraints import validate_timetable
 from demo_data import get_demo_data
-from database import load_data, save_data
+from database import load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS
 import importer
 import exporter
 import adjuster
@@ -43,6 +43,9 @@ app_data = {
     'sections': [],          # List[Section]
     'batches': [],           # List[Batch]
     'courses': [],           # List[Course]
+    'terms': [],             # List[AcademicTerm]
+    'departments': [],       # List[Department]
+    'active_term_id': 'term_2026_fall',
     'engine': None,          # SchedulingEngine (for view queries after generation)
     'result': None,          # dict from engine.solve()
 }
@@ -360,6 +363,81 @@ def manage_courses_id(id):
             return jsonify({'status': 'ok'})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Academic Terms & Departments API
+# ---------------------------------------------------------------------------
+@app.route('/api/terms', methods=['GET', 'POST'])
+def handle_terms():
+    if not app_data.get('terms'):
+        app_data['terms'] = [t for t in DEFAULT_TERMS]
+    if request.method == 'GET':
+        terms = [t.to_dict() for t in app_data['terms']]
+        active_id = app_data.get('active_term_id', 'term_2026_fall')
+        return jsonify({
+            'terms': terms,
+            'active_term_id': active_id
+        })
+    elif request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        term_id = data.get('id') or f"term_{len(app_data['terms']) + 1}"
+        new_term = AcademicTerm(
+            id=term_id,
+            name=data.get('name', 'New Term'),
+            academic_year=data.get('academic_year', '2026-27'),
+            semester_type=data.get('semester_type', 'ODD'),
+            is_active=bool(data.get('is_active', False))
+        )
+        app_data['terms'].append(new_term)
+        save_data(app_data)
+        return jsonify({'status': 'ok', 'term': new_term.to_dict()})
+
+
+@app.route('/api/terms/activate/<term_id>', methods=['POST'])
+def activate_term(term_id):
+    if not app_data.get('terms'):
+        app_data['terms'] = [t for t in DEFAULT_TERMS]
+    terms = app_data['terms']
+    matched = next((t for t in terms if t.id == term_id), None)
+    if not matched:
+        return jsonify({'error': f'Term {term_id} not found'}), 404
+
+    for t in terms:
+        t.is_active = (t.id == term_id)
+    app_data['active_term_id'] = term_id
+
+    # Update publishing term label
+    if 'publishing' not in app_data or not app_data['publishing']:
+        app_data['publishing'] = {'status': 'DRAFT', 'published_at': None}
+    app_data['publishing']['term'] = matched.name
+
+    save_data(app_data)
+    return jsonify({
+        'status': 'ok',
+        'active_term_id': term_id,
+        'active_term': matched.to_dict()
+    })
+
+
+@app.route('/api/departments', methods=['GET', 'POST'])
+def handle_departments():
+    if not app_data.get('departments'):
+        app_data['departments'] = [d for d in DEFAULT_DEPARTMENTS]
+    if request.method == 'GET':
+        depts = [d.to_dict() for d in app_data['departments']]
+        return jsonify(depts)
+    elif request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        dept_id = data.get('id') or f"dept_{data.get('code', 'NEW').lower()}"
+        new_dept = Department(
+            id=dept_id,
+            name=data.get('name', 'New Department'),
+            code=data.get('code', 'NEW').upper()
+        )
+        app_data['departments'].append(new_dept)
+        save_data(app_data)
+        return jsonify({'status': 'ok', 'department': new_dept.to_dict()})
 
 
 # ---------------------------------------------------------------------------

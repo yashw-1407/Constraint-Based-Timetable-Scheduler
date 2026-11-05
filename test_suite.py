@@ -463,5 +463,53 @@ class TestTimetableScheduler(unittest.TestCase):
         master_after = self.client.get('/api/timetable/master').get_json()
         self.assertEqual(len(master), len(master_after))
 
+    def test_18_academic_terms_management(self):
+        """Verify querying, adding, and activating academic semester terms."""
+        # 1. Query terms
+        res = self.client.get('/api/terms')
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn('terms', data)
+        self.assertGreaterEqual(len(data['terms']), 1)
+        self.assertIn('active_term_id', data)
+
+        # 2. Add new term
+        add_res = self.client.post('/api/terms', json={
+            'id': 'term_2027_summer',
+            'name': 'Summer 2027 Special Session',
+            'academic_year': '2026-27',
+            'semester_type': 'SUMMER'
+        })
+        self.assertEqual(add_res.status_code, 200)
+        self.assertEqual(add_res.get_json()['status'], 'ok')
+
+        # 3. Activate new term
+        act_res = self.client.post('/api/terms/activate/term_2027_summer')
+        self.assertEqual(act_res.status_code, 200)
+        self.assertEqual(act_res.get_json()['active_term_id'], 'term_2027_summer')
+
+        # 4. Verify publishing metadata updated
+        status_res = self.client.get('/api/timetable/status')
+        self.assertEqual(status_res.status_code, 200)
+        self.assertEqual(status_res.get_json().get('term'), 'Summer 2027 Special Session')
+
+    def test_19_departments_management(self):
+        """Verify querying and registering academic departments."""
+        # 1. Query departments
+        res = self.client.get('/api/departments')
+        self.assertEqual(res.status_code, 200)
+        depts = res.get_json()
+        self.assertGreaterEqual(len(depts), 1)
+
+        # 2. Add department
+        add_res = self.client.post('/api/departments', json={
+            'id': 'dept_mech',
+            'name': 'Mechanical Engineering',
+            'code': 'MECH'
+        })
+        self.assertEqual(add_res.status_code, 200)
+        self.assertEqual(add_res.get_json()['status'], 'ok')
+        self.assertEqual(add_res.get_json()['department']['code'], 'MECH')
+
 if __name__ == '__main__':
     unittest.main()

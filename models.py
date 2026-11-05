@@ -10,6 +10,28 @@ class RoomType:
     LAB = "LAB"
 
 @dataclass
+class AcademicTerm:
+    id: str
+    name: str
+    academic_year: str
+    semester_type: str = "ODD"
+    is_active: bool = False
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+@dataclass
+class Department:
+    id: str
+    name: str
+    code: str
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+@dataclass
 class WorkingConfig:
     working_days: List[str]
     start_time: str
