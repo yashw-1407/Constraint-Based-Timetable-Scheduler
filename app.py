@@ -913,6 +913,7 @@ def select_variant(index):
         return jsonify({'error': 'Invalid variant index'}), 400
         
     engine.load_assignments_data(variants[index]['assignments_data'])
+    result['assignments_data'] = variants[index]['assignments_data']
     result['active_variant_index'] = index
     result['assignments'] = engine._format_assignments()
     result['soft_score'] = variants[index].get('soft_score', {})
@@ -1174,7 +1175,7 @@ def api_faculty_calendar_ics(faculty_id):
 
     if not is_published and user and user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
         user_fac_id = user.get('faculty_id') or user.get('id')
-        if user_fac_id != faculty_id and user.get('role') == UserRole.STUDENT:
+        if user.get('role') == UserRole.STUDENT or (user.get('role') == UserRole.FACULTY and user_fac_id != faculty_id):
             return jsonify({'error': 'Access denied to unpublished faculty schedule', 'code': 'FORBIDDEN'}), 403
 
     if not app_data.get('config') or not app_data.get('result'):
@@ -1441,6 +1442,7 @@ def generate_multiple():
             result['active_variant_index'] = 0
             if result['variants']:
                 engine.load_assignments_data(result['variants'][0]['assignments_data'])
+                result['assignments_data'] = result['variants'][0]['assignments_data']
                 result['assignments'] = engine._format_assignments()
                 result['soft_score'] = result['variants'][0]['soft_score']
                 result['status'] = 'success'
