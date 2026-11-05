@@ -154,8 +154,20 @@ def execute_move(
             app_data['publishing']['status'] = 'DRAFT'
             app_data['publishing']['modified_after_publish'] = True
 
-    from database import save_data
+    from database import save_data, record_change_alert
     save_data(app_data)
+
+    record_change_alert(
+        academic_term_id=app_data.get('active_term_id', 'term_2026_fall'),
+        event_type='MOVE',
+        session_id=session.id,
+        details={
+            'course_code': session.course_code,
+            'target_day': target_day,
+            'target_slot': target_start_slot,
+            'target_room': target_room_id
+        }
+    )
 
     return True, "Session relocated successfully.", {
         "code": "SUCCESS",
@@ -240,8 +252,21 @@ def execute_swap(
                 if app_data.get('publishing'):
                     app_data['publishing']['status'] = 'DRAFT'
 
-            from database import save_data
+            from database import save_data, record_change_alert
             save_data(app_data)
+
+            record_change_alert(
+                academic_term_id=app_data.get('active_term_id', 'term_2026_fall'),
+                event_type='SWAP',
+                session_id=f"{session_a.id}<->{session_b.id}",
+                details={
+                    'session_a': session_a.id,
+                    'session_b': session_b.id,
+                    'new_pos_a': {'day': assign_b.day, 'slot': assign_b.start_slot_index, 'room': assign_b.room_id},
+                    'new_pos_b': {'day': assign_a.day, 'slot': assign_a.start_slot_index, 'room': assign_a.room_id}
+                }
+            )
+
             return True, "Sessions swapped successfully.", {
                 "code": "SUCCESS",
                 "soft_score": new_soft

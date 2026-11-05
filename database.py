@@ -24,11 +24,11 @@ from db_models import (
     db, DBAcademicTerm, DBDepartment, DBUser, DBWorkingConfig,
     DBRoom, DBFaculty, DBSection, DBBatch, DBCourse,
     course_faculty, course_lab_batches, DBTimetablePublication,
-    DBTimetableAssignment, DBScheduleVersion
+    DBTimetableAssignment, DBScheduleVersion, DBChangeAlert
 )
 
 DB_FILE = 'database.json'
-_lock = threading.Lock()
+_lock = threading.RLock()
 migrate = None
 _app = None
 
@@ -852,7 +852,72 @@ def restore_schedule_version(version_id: int, app_data: dict):
             db.session.commit()
             _save_json_backup(app_data)
 
+            # Record rollback change alert
+            record_change_alert(
+                academic_term_id=academic_term_id,
+                event_type='ROLLBACK',
+                session_id=f"version_{snapshot.version_tag}",
+                details={'version_tag': snapshot.version_tag, 'restored_assignments': len(assignments_data)}
+            )
+
             return True, f"Successfully restored timetable to version {snapshot.version_tag}."
         except Exception as e:
             db.session.rollback()
             raise e
+
+def record_change_alert(academic_term_id: str, event_type: str, session_id: str, details: dict):
+    """Record an operational timetable modification event."""
+    with _lock, db_context():
+        try:
+            alert = DBChangeAlert(
+                academic_term_id=academic_term_id,
+                event_type=event_type,
+                session_id=session_id,
+                details_json=json.dumps(details or {})
+            )
+            db.session.add(alert)
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            print(f"Failed to record change alert: {e}")
+            return False
+
+def get_change_alerts(academic_term_id: str = None, limit: int = 50):
+    """Retrieve chronologically ordered change alerts for timetable alterations."""
+    with _lock, db_context():
+        query = db.session.query(DBChangeAlert)
+        if academic_term_id:
+            query = query.filter_by(academic_term_id=academic_term_id)
+        alerts = query.order_by(DBChangeAlert.id.desc()).limit(limit).all()
+        result = []
+        for a in alerts:
+            det = {}
+            if a.details_json:
+                try:
+                    det = json.loads(a.details_json)
+                except Exception:
+                    pass
+            result.append({
+                'id': a.id,
+                'academic_term_id': a.academic_term_id,
+                'event_type': a.event_type,
+                'session_id': a.session_id,
+                'details': det,
+                'created_at': a.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if a.created_at else None
+            })
+        return result
+
+def clear_change_alerts(academic_term_id: str = None):
+    """Clear acknowledged timetable change alerts."""
+    with _lock, db_context():
+        try:
+            query = db.session.query(DBChangeAlert)
+            if academic_term_id:
+                query = query.filter_by(academic_term_id=academic_term_id)
+            query.delete()
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            return False

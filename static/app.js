@@ -1121,6 +1121,14 @@ function updatePublishingUI(data) {
     if (btnVersion) {
         btnVersion.style.display = 'inline-block';
     }
+    const btnAlerts = document.getElementById('btn-change-alerts');
+    if (btnAlerts) {
+        btnAlerts.style.display = 'inline-block';
+    }
+    const btnReports = document.getElementById('btn-reports-analytics');
+    if (btnReports) {
+        btnReports.style.display = 'inline-block';
+    }
 }
 
 document.getElementById('btn-publish-schedule')?.addEventListener('click', async () => {
@@ -1243,6 +1251,209 @@ btnSaveSnapshot?.addEventListener('click', async () => {
         showNotification('Snapshot failed: ' + err.message, 'error');
     }
 });
+
+// Timetable Change Alert Log Controller
+const modalChangeAlerts = document.getElementById('modal-change-alerts');
+const btnChangeAlerts = document.getElementById('btn-change-alerts');
+const btnCloseChangeAlerts = document.getElementById('btn-close-change-alerts');
+const btnDismissChangeAlerts = document.getElementById('btn-dismiss-change-alerts');
+const btnClearChangeAlerts = document.getElementById('btn-clear-change-alerts');
+const changeAlertsTbody = document.getElementById('change-alerts-tbody');
+
+btnChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) {
+        modalChangeAlerts.style.display = 'flex';
+        loadChangeAlerts();
+    }
+});
+btnCloseChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) modalChangeAlerts.style.display = 'none';
+});
+btnDismissChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) modalChangeAlerts.style.display = 'none';
+});
+
+async function loadChangeAlerts() {
+    if (!changeAlertsTbody) return;
+    changeAlertsTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading alerts...</td></tr>';
+    try {
+        const res = await fetchJSON('/api/timetable/change-log');
+        const alerts = res.alerts || [];
+        if (!alerts.length) {
+            changeAlertsTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">No recent timetable change events recorded.</td></tr>';
+            return;
+        }
+
+        changeAlertsTbody.innerHTML = alerts.map(a => {
+            const det = a.details || {};
+            let desc = '';
+            if (a.event_type === 'MOVE') {
+                desc = `Relocated ${det.course_code || a.session_id} to ${det.target_day} (slot ${det.target_slot}, room ${det.target_room})`;
+            } else if (a.event_type === 'SWAP') {
+                desc = `Swapped sessions ${det.session_a} and ${det.session_b}`;
+            } else if (a.event_type === 'ROLLBACK') {
+                desc = `Rollback to version ${det.version_tag} (${det.restored_assignments || 0} assignments restored)`;
+            } else {
+                desc = JSON.stringify(det);
+            }
+            return `
+                <tr>
+                    <td><span class="badge ${a.event_type === 'MOVE' ? 'badge-primary' : (a.event_type === 'SWAP' ? 'badge-accent' : 'badge-warning')}">${a.event_type}</span></td>
+                    <td style="color: var(--color-text-secondary);">${a.created_at || 'N/A'}</td>
+                    <td><code>${a.session_id}</code></td>
+                    <td>${desc}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        changeAlertsTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--color-danger); padding: 16px;">Failed to load alerts: ${err.message}</td></tr>`;
+    }
+}
+
+btnClearChangeAlerts?.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear the change alert log?')) return;
+    try {
+        await fetchJSON('/api/timetable/change-log/clear', { method: 'POST' });
+        showNotification('Change alert log cleared', 'info');
+        loadChangeAlerts();
+    } catch (err) {
+        showNotification('Failed to clear alerts: ' + err.message, 'error');
+    }
+});
+
+// Institutional Reports & Utilization Controller
+const modalReports = document.getElementById('modal-reports');
+const btnReportsAnalytics = document.getElementById('btn-reports-analytics');
+const btnCloseReports = document.getElementById('btn-close-reports');
+const btnDismissReports = document.getElementById('btn-dismiss-reports');
+const reportContentPanel = document.getElementById('report-content-panel');
+let currentReportData = null;
+let activeReportTab = 'rooms';
+
+btnReportsAnalytics?.addEventListener('click', async () => {
+    if (modalReports) {
+        modalReports.style.display = 'flex';
+        await loadUtilizationReport();
+    }
+});
+btnCloseReports?.addEventListener('click', () => {
+    if (modalReports) modalReports.style.display = 'none';
+});
+btnDismissReports?.addEventListener('click', () => {
+    if (modalReports) modalReports.style.display = 'none';
+});
+
+document.querySelectorAll('.report-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.report-tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        activeReportTab = e.target.dataset.report;
+        renderReportTab();
+    });
+});
+
+async function loadUtilizationReport() {
+    if (!reportContentPanel) return;
+    reportContentPanel.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--color-text-secondary);">Calculating institutional metrics...</div>';
+    try {
+        const res = await fetchJSON('/api/reports/utilization');
+        currentReportData = res;
+        renderReportTab();
+    } catch (err) {
+        reportContentPanel.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--color-danger);">Failed to load reports: ${err.message}</div>`;
+    }
+}
+
+function renderReportTab() {
+    if (!currentReportData || !reportContentPanel) return;
+    if (activeReportTab === 'rooms') {
+        const rooms = currentReportData.rooms || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Facility Room</th>
+                        <th>Type</th>
+                        <th>Capacity</th>
+                        <th>Occupied Slots</th>
+                        <th>Weekly Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rooms.map(r => `
+                        <tr>
+                            <td style="font-weight: 600;">${r.room_name} (${r.room_id})</td>
+                            <td>${r.room_type}</td>
+                            <td>${r.capacity || 'N/A'}</td>
+                            <td>${r.occupied_slots} / ${r.total_slots}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="flex: 1; height: 8px; background: var(--color-surface-subtle); border-radius: 4px; overflow: hidden; max-width: 120px;">
+                                        <div style="width: ${Math.min(100, r.utilization_pct)}%; height: 100%; background: ${r.utilization_pct > 70 ? 'var(--color-warning)' : 'var(--color-brand-primary)'};"></div>
+                                    </div>
+                                    <span style="font-weight: 600;">${r.utilization_pct}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } else if (activeReportTab === 'faculty') {
+        const faculty = currentReportData.faculty || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Faculty Member</th>
+                        <th>Assigned Courses</th>
+                        <th>Weekly Contact Hours</th>
+                        <th>Schedule Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${faculty.map(f => `
+                        <tr>
+                            <td style="font-weight: 600;">${f.faculty_name} (${f.faculty_id})</td>
+                            <td>${f.course_count} courses</td>
+                            <td style="font-weight: 600;">${f.weekly_hours} hrs / week</td>
+                            <td><span class="badge ${f.weekly_hours > 0 ? 'badge-success' : 'badge-muted'}">${f.weekly_hours > 0 ? 'Assigned' : 'Available'}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } else if (activeReportTab === 'sections') {
+        const sections = currentReportData.sections || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Cohort Section</th>
+                        <th>Semester</th>
+                        <th>Scheduled Periods</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sections.map(s => `
+                        <tr>
+                            <td style="font-weight: 600;">${s.section_name} (${s.section_id})</td>
+                            <td>Semester ${s.semester}</td>
+                            <td>${s.scheduled_sessions} sessions / week</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+}
+
+// Register Progressive Web App Service Worker
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+}
 
 // Candidate Variants Comparison & Pareto Selection
 let candidateVariants = [];

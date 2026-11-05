@@ -26,7 +26,8 @@ from demo_data import get_demo_data
 from database import (
     init_db, load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS,
     verify_password, hash_password, get_default_users,
-    get_schedule_versions, create_schedule_snapshot, restore_schedule_version
+    get_schedule_versions, create_schedule_snapshot, restore_schedule_version,
+    get_change_alerts, clear_change_alerts
 )
 from calendar_feed import generate_faculty_ical
 import importer
@@ -1210,6 +1211,190 @@ def api_faculty_calendar_ics(faculty_id):
             'Cache-Control': 'no-cache'
         }
     )
+
+
+@app.route('/manifest.json', methods=['GET'])
+def get_manifest():
+    return send_file(os.path.join(app.root_path, 'static', 'manifest.json'), mimetype='application/manifest+json')
+
+
+@app.route('/sw.js', methods=['GET'])
+def get_service_worker():
+    return send_file(os.path.join(app.root_path, 'static', 'sw.js'), mimetype='application/javascript')
+
+
+@app.route('/api/faculty/me/schedule', methods=['GET'])
+@login_required
+def api_faculty_me_schedule():
+    user = session.get('user') or {}
+    role = user.get('role')
+
+    target_faculty_id = None
+    if role == UserRole.FACULTY:
+        target_faculty_id = user.get('faculty_id')
+        if not target_faculty_id:
+            username = user.get('username', '').lower()
+            user_name = user.get('name', '').lower()
+            for f in app_data.get('faculty', []):
+                if f.id.lower() == username or f.name.lower() in user_name or user_name in f.name.lower():
+                    target_faculty_id = f.id
+                    break
+            if not target_faculty_id and app_data.get('faculty'):
+                target_faculty_id = app_data['faculty'][0].id
+    elif role in (UserRole.ADMIN, UserRole.COORDINATOR):
+        target_faculty_id = request.args.get('faculty_id') or (app_data['faculty'][0].id if app_data.get('faculty') else None)
+    else:
+        return jsonify({'error': 'Access restricted to faculty and academic administrators', 'code': 'FORBIDDEN'}), 403
+
+    if not target_faculty_id:
+        return jsonify({'error': 'No linked faculty identity found', 'code': 'NOT_FOUND'}), 404
+
+    fac = next((f for f in app_data.get('faculty', []) if f.id == target_faculty_id), None)
+    if not fac:
+        return jsonify({'error': 'Faculty member not found'}), 404
+
+    courses_taught = [c for c in app_data.get('courses', []) if target_faculty_id in c.faculty_ids or target_faculty_id in getattr(c, 'assistant_faculty_ids', [])]
+    total_weekly_hours = sum(c.l + c.t + c.p for c in courses_taught)
+
+    sessions = []
+    if app_data.get('result') and app_data['result'].get('assignments_data'):
+        courses_by_id = {c.id: c for c in app_data.get('courses', [])}
+        rooms_by_id = {r.id: r for r in app_data.get('rooms', [])}
+        sections_by_id = {s.id: s for s in app_data.get('sections', [])}
+
+        for a in app_data['result']['assignments_data']:
+            sess_id = a.get('session_id', '')
+            c = next((crs for cid, crs in courses_by_id.items() if sess_id.startswith(cid)), None)
+            if c and (target_faculty_id in c.faculty_ids or target_faculty_id in getattr(c, 'assistant_faculty_ids', [])):
+                room = rooms_by_id.get(a.get('room_id'))
+                sec = sections_by_id.get(a.get('section_id'))
+                sessions.append({
+                    'session_id': sess_id,
+                    'day': a.get('day'),
+                    'start_slot_index': a.get('start_slot_index'),
+                    'duration_slots': a.get('duration_slots', 1),
+                    'course_id': c.id,
+                    'course_code': c.code,
+                    'course_name': c.name,
+                    'room_id': a.get('room_id'),
+                    'room_name': room.name if room else a.get('room_id'),
+                    'section_id': a.get('section_id'),
+                    'section_name': sec.name if sec else a.get('section_id')
+                })
+
+    return jsonify({
+        'status': 'ok',
+        'faculty': {
+            'id': fac.id,
+            'name': fac.name,
+            'available_days': fac.available_days,
+            'weekly_contact_hours': total_weekly_hours,
+            'course_count': len(courses_taught),
+            'calendar_ics_url': f'/api/faculty/{target_faculty_id}/calendar.ics'
+        },
+        'courses': [
+            {
+                'id': c.id,
+                'name': c.name,
+                'code': c.code,
+                'section_id': c.section_id,
+                'hours': c.l + c.t + c.p,
+                'room_type': c.room_type
+            } for c in courses_taught
+        ],
+        'sessions': sessions,
+        'publishing': app_data.get('publishing')
+    })
+
+
+@app.route('/api/timetable/change-log', methods=['GET'])
+def api_get_change_log():
+    term_id = request.args.get('term_id') or app_data.get('active_term_id')
+    limit = int(request.args.get('limit', 50))
+    alerts = get_change_alerts(term_id, limit=limit)
+    return jsonify({
+        'status': 'ok',
+        'count': len(alerts),
+        'alerts': alerts
+    })
+
+
+@app.route('/api/timetable/change-log/clear', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
+def api_clear_change_log():
+    term_id = app_data.get('active_term_id')
+    clear_change_alerts(term_id)
+    return jsonify({
+        'status': 'ok',
+        'message': 'Change alert log cleared successfully'
+    })
+
+
+@app.route('/api/reports/utilization', methods=['GET'])
+def api_get_utilization_report():
+    total_slots_per_room = 40
+    if app_data.get('config'):
+        days = len(app_data['config'].working_days)
+        time_slots_count = len(generate_time_slots(app_data['config']))
+        total_slots_per_room = max(1, days * time_slots_count)
+
+    assignments = (app_data.get('result') or {}).get('assignments_data', [])
+    rooms = app_data.get('rooms', [])
+    faculty = app_data.get('faculty', [])
+    courses = app_data.get('courses', [])
+    sections = app_data.get('sections', [])
+    depts = app_data.get('departments', [])
+
+    room_counts = {}
+    for a in assignments:
+        rid = a.get('room_id')
+        room_counts[rid] = room_counts.get(rid, 0) + 1
+
+    room_metrics = []
+    for r in rooms:
+        occupied = room_counts.get(r.id, 0)
+        pct = round((occupied * 100.0) / total_slots_per_room, 1)
+        room_metrics.append({
+            'room_id': r.id,
+            'room_name': r.name,
+            'room_type': r.room_type,
+            'capacity': r.capacity,
+            'occupied_slots': occupied,
+            'total_slots': total_slots_per_room,
+            'utilization_pct': pct
+        })
+
+    fac_metrics = []
+    for f in faculty:
+        taught = [c for c in courses if f.id in c.faculty_ids or f.id in getattr(c, 'assistant_faculty_ids', [])]
+        hours = sum(c.l + c.t + c.p for c in taught)
+        fac_metrics.append({
+            'faculty_id': f.id,
+            'faculty_name': f.name,
+            'course_count': len(taught),
+            'weekly_hours': hours
+        })
+
+    sec_metrics = []
+    for s in sections:
+        sec_assigns = [a for a in assignments if a.get('section_id') == s.id]
+        sec_metrics.append({
+            'section_id': s.id,
+            'section_name': s.name,
+            'semester': s.semester,
+            'scheduled_sessions': len(sec_assigns)
+        })
+
+    return jsonify({
+        'status': 'ok',
+        'term_id': app_data.get('active_term_id'),
+        'total_assignments': len(assignments),
+        'rooms': sorted(room_metrics, key=lambda x: x['utilization_pct'], reverse=True),
+        'faculty': sorted(fac_metrics, key=lambda x: x['weekly_hours'], reverse=True),
+        'sections': sorted(sec_metrics, key=lambda x: x['semester']),
+        'departments': [{'id': d.id, 'name': d.name, 'code': d.code} for d in depts]
+    })
 
 
 @app.route('/api/generate-multiple', methods=['POST'])

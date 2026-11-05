@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="manifest" href="/manifest.json">
     <style>
 /* Hallmark · built: AutoSchedule · redesign: restyle · genre: modern-minimal · job: schedule academic courses and generate conflict-free timetables */
 html, body { overflow-x: clip; width: 100%; }
@@ -587,6 +588,12 @@ html, body { overflow-x: clip; width: 100%; }
                     <button id="btn-version-history" class="btn btn-outline" style="display: none;">
                         Version History
                     </button>
+                    <button id="btn-change-alerts" class="btn btn-outline" style="display: none;">
+                        Change Log
+                    </button>
+                    <button id="btn-reports-analytics" class="btn btn-outline" style="display: none;">
+                        Utilization Report
+                    </button>
                     <button id="btn-publish-schedule" class="btn btn-success" style="display: none;">
                         Publish Schedule
                     </button>
@@ -989,6 +996,61 @@ html, body { overflow-x: clip; width: 100%; }
             </div>
             <div class="modal-footer" style="display: flex; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 16px;">
                 <button type="button" id="btn-dismiss-version-history" class="btn btn-outline">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Alerts Log Modal -->
+    <div id="modal-change-alerts" class="modal-backdrop" style="display: none;">
+        <div class="modal-card surface-card" style="max-width: 680px; width: 90%;">
+            <div class="modal-header">
+                <h3>Timetable Change Alert Log</h3>
+                <button type="button" id="btn-close-change-alerts" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">Chronological log of recent session relocations, atomic swaps, and schedule rollbacks.</p>
+                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                    <table class="data-table" style="width: 100%; font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Timestamp (UTC)</th>
+                                <th>Session</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="change-alerts-tbody">
+                            <tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading alerts...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 16px;">
+                <button type="button" id="btn-clear-change-alerts" class="btn btn-outline btn-sm">Clear Log</button>
+                <button type="button" id="btn-dismiss-change-alerts" class="btn btn-outline">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Institutional Utilization & Analytics Modal -->
+    <div id="modal-reports" class="modal-backdrop" style="display: none;">
+        <div class="modal-card surface-card" style="max-width: 800px; width: 92%;">
+            <div class="modal-header">
+                <h3>Institutional Utilization &amp; Workload Analytics</h3>
+                <button type="button" id="btn-close-reports" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="report-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
+                    <button type="button" class="btn btn-sm btn-outline report-tab-btn active" data-report="rooms">Room Utilization</button>
+                    <button type="button" class="btn btn-sm btn-outline report-tab-btn" data-report="faculty">Faculty Workload</button>
+                    <button type="button" class="btn btn-sm btn-outline report-tab-btn" data-report="sections">Cohort Density</button>
+                </div>
+                <div id="report-content-panel" class="table-responsive" style="max-height: 360px; overflow-y: auto;">
+                    <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">Loading analytics...</div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--color-border); margin-top: 16px;">
+                <button type="button" id="btn-dismiss-reports" class="btn btn-outline">Close</button>
             </div>
         </div>
     </div>

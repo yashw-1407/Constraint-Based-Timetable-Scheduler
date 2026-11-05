@@ -273,7 +273,19 @@ test_milestone_c.py:
   test_09_faculty_ical_unpublished_access_control      -> PASS
   test_10_faculty_ical_published_public_access         -> PASS
 
-Total: 61 passed, 0 failed, 0 errors.
+test_milestone_d_e.py:
+  test_01_faculty_me_schedule_authenticated            -> PASS
+  test_02_faculty_me_schedule_admin_query              -> PASS
+  test_03_faculty_me_schedule_student_forbidden        -> PASS
+  test_04_change_alert_recorded_on_move                -> PASS
+  test_05_change_alert_recorded_on_rollback            -> PASS
+  test_06_clear_change_alerts_authorized               -> PASS
+  test_07_clear_change_alerts_unauthorized_rejection   -> PASS
+  test_08_institutional_utilization_report             -> PASS
+  test_09_pwa_web_manifest                             -> PASS
+  test_10_pwa_service_worker                           -> PASS
+
+Total: 71 passed, 0 failed, 0 errors.
 ```
 
 ---

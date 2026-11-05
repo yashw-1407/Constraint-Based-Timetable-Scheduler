@@ -251,3 +251,16 @@ class DBScheduleVersion(db.Model):
     result_json = Column(Text, nullable=True)
 
     term = relationship('DBAcademicTerm', back_populates='schedule_versions')
+
+
+class DBChangeAlert(db.Model):
+    __tablename__ = 'change_alerts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    academic_term_id = Column(String(64), ForeignKey('academic_terms.id', ondelete='CASCADE'), nullable=True, index=True)
+    event_type = Column(String(32), nullable=False, index=True)  # 'MOVE', 'SWAP', 'ROLLBACK'
+    session_id = Column(String(128), nullable=False)
+    details_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=get_utc_now, nullable=False)
+
+    term = relationship('DBAcademicTerm')
