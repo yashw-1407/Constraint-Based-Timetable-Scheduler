@@ -19,6 +19,7 @@ def save_data(app_data):
             'sections': [s.to_dict() for s in app_data['sections']],
             'batches': [b.to_dict() for b in app_data['batches']],
             'courses': [c.to_dict() for c in app_data['courses']],
+            'publishing': app_data.get('publishing'),
         }
         temp_file = DB_FILE + '.tmp'
         with open(temp_file, 'w', encoding='utf-8') as f:
@@ -41,5 +42,6 @@ def load_data(app_data):
             app_data['sections'] = [Section.from_dict(d) for d in data.get('sections', [])]
             app_data['batches'] = [Batch.from_dict(d) for d in data.get('batches', [])]
             app_data['courses'] = [Course.from_dict(d) for d in data.get('courses', [])]
+            app_data['publishing'] = data.get('publishing')
         except Exception as e:
             print(f"Error loading database: {e}")

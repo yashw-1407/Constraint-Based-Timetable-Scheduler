@@ -337,5 +337,55 @@ class TestTimetableScheduler(unittest.TestCase):
         self.assertIn('Faculty Schedules', wb.sheetnames)
         self.assertIn('Room Schedules', wb.sheetnames)
 
+    def test_14_multi_variant_generation_and_selection(self):
+        """Verify generating multiple candidate schedule variants and selecting an active variant."""
+        self.client.post('/api/load-demo')
+        # Generate 3 variants
+        res = self.client.post('/api/generate-multiple', json={'count': 3, 'min_diversity_pct': 10.0})
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get('status'), 'success')
+        variants = data.get('variants', [])
+        self.assertGreaterEqual(len(variants), 2)
+        self.assertEqual(data.get('active_variant_index'), 0)
+
+        # Select second variant
+        sel_res = self.client.post('/api/timetable/variant/1')
+        self.assertEqual(sel_res.status_code, 200)
+        sel_data = sel_res.get_json()
+        self.assertEqual(sel_data.get('status'), 'ok')
+        self.assertEqual(sel_data.get('active_variant_index'), 1)
+
+        # Verify active variant in metadata
+        meta = self.client.get('/api/timetable/metadata').get_json()
+        self.assertEqual(meta.get('active_variant_index'), 1)
+
+    def test_15_schedule_publishing_lifecycle(self):
+        """Verify schedule publishing lifecycle states (DRAFT -> PUBLISHED -> DRAFT)."""
+        self.client.post('/api/load-demo')
+        self.client.post('/api/generate')
+
+        # Check default status is DRAFT
+        st_res = self.client.get('/api/timetable/status')
+        self.assertEqual(st_res.status_code, 200)
+        self.assertEqual(st_res.get_json().get('status'), 'DRAFT')
+
+        # Publish timetable
+        pub_res = self.client.post('/api/timetable/publish', json={'term': 'Spring 2026-27'})
+        self.assertEqual(pub_res.status_code, 200)
+        pub_data = pub_res.get_json()
+        self.assertEqual(pub_data['publishing']['status'], 'PUBLISHED')
+        self.assertEqual(pub_data['publishing']['term'], 'Spring 2026-27')
+        self.assertIsNotNone(pub_data['publishing']['published_at'])
+
+        # Re-verify GET status
+        st_res2 = self.client.get('/api/timetable/status')
+        self.assertEqual(st_res2.get_json().get('status'), 'PUBLISHED')
+
+        # Unpublish back to DRAFT
+        unpub_res = self.client.post('/api/timetable/unpublish')
+        self.assertEqual(unpub_res.status_code, 200)
+        self.assertEqual(unpub_res.get_json()['publishing']['status'], 'DRAFT')
+
 if __name__ == '__main__':
     unittest.main()

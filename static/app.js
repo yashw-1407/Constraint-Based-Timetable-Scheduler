@@ -50,6 +50,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+    fetchPublishingStatus();
     const hash = (window.location.hash || '').replace('#', '');
     if (hash) {
         const btn = document.querySelector(`.tab-btn[data-target="${hash}"]`);
@@ -509,7 +510,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
             statusCard.className = 'status-card success-card';
             statusText.innerHTML = `Timetable generated successfully!`;
-            statusText.style.color = 'var(--success)';
+            statusText.style.color = 'var(--color-success)';
             scoreDiv.style.display = 'block';
 
             let detailsHtml = '';
@@ -527,7 +528,15 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
                 ${detailsHtml}
             `;
 
-            // After 1.5s, prompt user to go to Views tab
+            const btnExport = document.getElementById('btn-export-excel');
+            if (btnExport) btnExport.style.display = 'inline-flex';
+            const btnPrint = document.getElementById('btn-print');
+            if (btnPrint) btnPrint.style.display = 'inline-block';
+            fetchPublishingStatus();
+
+            const varPanel = document.getElementById('variants-comparison-panel');
+            if (varPanel) varPanel.style.display = 'none';
+
             setTimeout(() => {
                 showNotification('Timetable ready! Switch to Timetable Views tab', 'success');
             }, 600);
@@ -535,14 +544,14 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
         } else {
             statusCard.className = 'status-card error-card';
             statusText.innerHTML = `Generation Infeasible: ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
-            statusText.style.color = 'var(--danger)';
+            statusText.style.color = 'var(--color-danger)';
             diagDiv.style.display = 'block';
             diagDiv.innerHTML = `<strong>Diagnostic Conflict:</strong> ${res.message || 'Infeasible problem'}<br><pre class="diagnostics-pre">${res.diagnostics || ''}</pre>`;
         }
     } catch (e) {
         statusCard.className = 'status-card error-card';
         statusText.innerHTML = `Error: ${e.message}`;
-        statusText.style.color = 'var(--danger)';
+        statusText.style.color = 'var(--color-danger)';
     } finally {
         btn.disabled = false;
         btn.innerHTML = 'Generate Timetable';
@@ -944,183 +953,250 @@ function resetEditState(formId) {
     }
 }
 
-function loadTimetableViewsInit() {
+// Timetable Views Initialization & Publishing Lifecycle
+async function loadTimetableViewsInit() {
+    await fetchPublishingStatus();
     const activeBtn = document.querySelector('.view-btn.active');
     if (!activeBtn) {
         const masterBtn = document.querySelector('.view-btn[data-view="master"]');
         if (masterBtn) masterBtn.click();
+    } else {
+        const view = activeBtn.dataset.view;
+        const selector = document.getElementById('view-selector');
+        if (view === 'master') {
+            await renderMasterView();
+        } else if (selector && selector.value) {
+            if (view === 'section') await renderSectionView(selector.value);
+            else if (view === 'faculty') await renderFacultyView(selector.value);
+            else if (view === 'room') await renderRoomView(selector.value);
+        }
     }
 }
 
-
-let currentVariantIndex = 0;
-let totalVariants = 0;
-
-async function loadVariantMetadata() {
+// Publishing State Management
+async function fetchPublishingStatus() {
     try {
-        const nav = document.getElementById('variant-navigator');
-        if (!nav) return;
-        const res = await fetch('/api/timetable/metadata');
-        if (!res.ok) {
-            nav.style.display = 'none';
-            return;
-        }
+        const res = await fetch('/api/timetable/status');
+        if (!res.ok) return;
         const data = await res.json();
-        
-        if (data.num_variants > 1) {
-            nav.style.display = 'flex';
-            currentVariantIndex = data.active_variant_index;
-            totalVariants = data.num_variants;
-            
-            const curEl = document.getElementById('var-current');
-            const totEl = document.getElementById('var-total');
-            const scoreEl = document.getElementById('var-score');
-            const prevBtn = document.getElementById('btn-var-prev');
-            const nextBtn = document.getElementById('btn-var-next');
-            if (curEl) curEl.textContent = currentVariantIndex + 1;
-            if (totEl) totEl.textContent = totalVariants;
-            if (scoreEl) scoreEl.textContent = data.active_score ? data.active_score.total_score : 0;
-            if (prevBtn) prevBtn.disabled = currentVariantIndex === 0;
-            if (nextBtn) nextBtn.disabled = currentVariantIndex === totalVariants - 1;
+        updatePublishingUI(data);
+    } catch (e) {
+        console.warn('Could not load timetable status:', e);
+    }
+}
+
+function updatePublishingUI(data) {
+    const headerChip = document.getElementById('header-lifecycle-chip');
+    const viewsBadge = document.getElementById('views-lifecycle-badge');
+    const btnPublish = document.getElementById('btn-publish-schedule');
+    const btnUnpublish = document.getElementById('btn-unpublish-schedule');
+
+    const isPublished = Boolean(data && data.is_published);
+    const label = isPublished ? 'Published' : 'Draft';
+
+    if (headerChip) {
+        headerChip.textContent = label;
+        headerChip.className = isPublished ? 'lifecycle-chip chip-published' : 'lifecycle-chip chip-draft';
+        if (data && data.published_at) {
+            headerChip.title = `Published at ${data.published_at} UTC`;
         } else {
-            nav.style.display = 'none';
+            headerChip.title = 'Schedule in draft state';
         }
-    } catch (e) {
-        const nav = document.getElementById('variant-navigator');
-        if (nav) nav.style.display = 'none';
     }
-}
 
-document.getElementById('btn-var-prev')?.addEventListener('click', async () => {
-    if (currentVariantIndex > 0) await switchVariant(currentVariantIndex - 1);
-});
-
-document.getElementById('btn-var-next')?.addEventListener('click', async () => {
-    if (currentVariantIndex < totalVariants - 1) await switchVariant(currentVariantIndex + 1);
-});
-
-async function switchVariant(index) {
-    try {
-        await fetch('/api/timetable/variant/' + index, { method: 'POST' });
-        await loadVariantMetadata();
-        
-        // Refresh the active view
-        const activeBtn = document.querySelector('.view-btn.active');
-        if (activeBtn) {
-            if (activeBtn.dataset.view === 'master') {
-                await renderMasterView();
-            } else {
-                const selector = document.getElementById('view-selector');
-                if (selector.value) {
-                    if (activeBtn.dataset.view === 'section') await renderSectionView(selector.value);
-                    else if (activeBtn.dataset.view === 'faculty') await renderFacultyView(selector.value);
-                    else if (activeBtn.dataset.view === 'room') await renderRoomView(selector.value);
-                }
-            }
-        }
-    } catch (e) {
-        showNotification('Failed to switch timetable variant', 'error');
+    if (viewsBadge) {
+        viewsBadge.textContent = label;
+        viewsBadge.className = isPublished ? 'lifecycle-chip chip-published' : 'lifecycle-chip chip-draft';
     }
-}
 
-
-document.getElementById('btn-generate-multiple')?.addEventListener('click', async () => {
-    const statusDiv = document.getElementById('gen-status-alt');
-    const statusText = document.getElementById('gen-status-text-alt');
-    const scoreDiv = document.getElementById('gen-score-alt');
-    const diagDiv = document.getElementById('gen-diagnostics-alt');
-    const altList = document.getElementById('alternatives-list');
-    
-    statusDiv.style.display = 'block';
-    statusText.textContent = 'Generating alternatives... Please wait';
-    statusText.style.color = '';
-    scoreDiv.style.display = 'none';
-    diagDiv.style.display = 'none';
-    altList.innerHTML = '<p style="color: #666;">Generating...</p>';
-    
-    try {
-        const count = document.getElementById('alt-count').value;
-        const divPct = document.getElementById('alt-diversity').value;
-        const res = await fetchJSON('/api/generate-multiple', { 
-            method: 'POST',
-            body: JSON.stringify({ count: count, min_diversity_pct: divPct })
-        });
-        
-        if (res.status === 'success' || res.status === 'partial') {
-            lastGeneratedResult = res;
-            statusText.textContent = `Generated ${res.generated} unique diverse feasible timetables out of ${res.requested} requested.`;
-            statusText.style.color = 'var(--success)';
-            renderAlternativesList(res);
+    if (btnPublish && btnUnpublish) {
+        if (isPublished) {
+            btnPublish.style.display = 'none';
+            btnUnpublish.style.display = 'inline-block';
         } else {
-            statusText.textContent = `Generation Failed (Infeasible)`;
-            statusText.style.color = 'var(--danger)';
-            diagDiv.style.display = 'block';
-            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message}<br><pre>${res.diagnostics}</pre>`;
-            altList.innerHTML = '<p style="color: #666;">No alternatives to display.</p>';
+            btnPublish.style.display = 'inline-block';
+            btnUnpublish.style.display = 'none';
         }
-    } catch (e) {
-        statusText.textContent = 'Error: ' + e.message;
-        statusText.style.color = 'var(--danger)';
-    }
-});
-
-let lastGeneratedResult = null; // store globally when generated
-
-async function makeActive(index) {
-    try {
-        await fetch('/api/timetable/variant/' + index, { method: 'POST' });
-        if (lastGeneratedResult) {
-            lastGeneratedResult.active_variant_index = index;
-            renderAlternativesList(lastGeneratedResult);
-        }
-    } catch (e) {
-        showNotification('Failed to set active alternative', 'error');
     }
 }
 
-function renderAlternativesList(res) {
-    const altList = document.getElementById('alternatives-list');
-    altList.innerHTML = '';
-    res.alternatives.forEach((alt, idx) => {
-        const isActive = res.active_variant_index === idx;
-        
+document.getElementById('btn-publish-schedule')?.addEventListener('click', async () => {
+    try {
+        const res = await fetchJSON('/api/timetable/publish', { method: 'POST' });
+        showNotification('Timetable published to institutional registry', 'success');
+        updatePublishingUI(res);
+    } catch (err) {
+        showNotification('Failed to publish timetable: ' + err.message, 'error');
+    }
+});
+
+document.getElementById('btn-unpublish-schedule')?.addEventListener('click', async () => {
+    try {
+        const res = await fetchJSON('/api/timetable/unpublish', { method: 'POST' });
+        showNotification('Timetable reverted to Draft state', 'info');
+        updatePublishingUI(res);
+    } catch (err) {
+        showNotification('Failed to unpublish timetable: ' + err.message, 'error');
+    }
+});
+
+// Candidate Variants Comparison & Pareto Selection
+let candidateVariants = [];
+let activeVariantIndex = 0;
+
+function renderVariantsComparison(variants, activeIdx) {
+    candidateVariants = variants || [];
+    activeVariantIndex = activeIdx || 0;
+
+    const panel = document.getElementById('variants-comparison-panel');
+    const grid = document.getElementById('variants-grid');
+    if (!panel || !grid) return;
+
+    if (!candidateVariants || candidateVariants.length === 0) {
+        panel.style.display = 'none';
+        grid.innerHTML = '';
+        return;
+    }
+
+    panel.style.display = 'block';
+    grid.innerHTML = '';
+
+    candidateVariants.forEach((v, idx) => {
+        const isActive = idx === activeVariantIndex;
         const card = document.createElement('div');
-        card.style.border = isActive ? '2px solid var(--primary)' : '1px solid #ccc';
-        card.style.padding = '15px';
-        card.style.borderRadius = '8px';
-        card.style.background = isActive ? '#f0f7ff' : '#fff';
-        
-        const divDisplay = alt.diversity_pct === 'Base' ? 'Base' : `${alt.diversity_pct}%`;
-        const changedDisplay = alt.diversity_pct === 'Base' ? '' : `Changed: ${alt.changed_assignments}/${alt.stats.total_sessions} sessions &bull; `;
-        
-        let html = `
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">Alternative ${alt.alternative_id} ${isActive ? '<span style="font-size: 12px; background: var(--primary); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 10px;">ACTIVE</span>' : ''}</h3>
-                    
-                    <div style="margin-top: 10px;">
-                        ${alt.stats.total_sessions}/${alt.stats.total_sessions} sessions
-                    </div>
-                    <div style="margin-top: 5px; font-weight: bold;">
-                        Soft Constraint Score: ${alt.soft_score.percentage}% (${alt.soft_score.total_score})
-                    </div>
-                    <div style="margin-top: 5px; color: #2c3e50;">
-                        Diversity: ${divDisplay}
-                    </div>
-                    <div style="color: #666; font-size: 13px; margin-top: 5px;">
-                        ${changedDisplay}Seed: ${alt.seed} &bull; Time: ${alt.stats.time_ms} ms &bull; Backtracks: ${alt.stats.backtracks}
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 5px;">
-                    <button class="btn" onclick="document.querySelector('button[data-target=views]').click()">View</button>
-                    ${!isActive ? `<button class="btn primary" onclick="makeActive(${idx})">Make Active</button>` : ''}
-                </div>
+        card.className = isActive ? 'variant-card active-variant' : 'variant-card';
+
+        const score = v.soft_score ? v.soft_score.percentage : 0;
+        const divLabel = v.diversity_pct === 'Base' ? 'Baseline Pareto' : `${v.diversity_pct}% Divergence`;
+        const stats = v.stats || {};
+
+        let chipsHtml = '';
+        if (v.soft_score && v.soft_score.details) {
+            chipsHtml = Object.entries(v.soft_score.details)
+                .slice(0, 3)
+                .map(([k, d]) => `<span class="score-chip">${d.description || k}: <strong>${d.score}/${d.max}</strong></span>`)
+                .join('');
+        }
+
+        card.innerHTML = `
+            <div class="variant-card-header">
+                <h4 class="variant-title">Candidate Schedule ${idx + 1}</h4>
+                ${isActive ? '<span class="variant-active-indicator">Active Selection</span>' : ''}
+            </div>
+            <div class="variant-metrics-row">
+                <span class="variant-score-badge">${score}% Quality</span>
+                <span class="variant-diversity-tag">${divLabel}</span>
+            </div>
+            <div class="variant-chips-wrap">
+                ${chipsHtml}
+            </div>
+            <div style="font-size: 11.5px; color: var(--color-text-secondary); margin-top: auto;">
+                ${stats.total_sessions || 0} sessions &bull; ${stats.backtracks || 0} backtracks &bull; ${stats.time_ms || 0}ms
+            </div>
+            <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
+                <button type="button" class="btn btn-sm btn-outline btn-inspect-variant" data-index="${idx}" style="flex: 1;">
+                    Inspect Views
+                </button>
+                ${!isActive ? `<button type="button" class="btn btn-sm btn-primary btn-activate-variant" data-index="${idx}" style="flex: 1;">Activate</button>` : ''}
             </div>
         `;
-        card.innerHTML = html;
-        altList.appendChild(card);
+
+        grid.appendChild(card);
+    });
+
+    grid.querySelectorAll('.btn-activate-variant').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+            await activateVariant(idx);
+        });
+    });
+
+    grid.querySelectorAll('.btn-inspect-variant').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+            if (idx !== activeVariantIndex) {
+                await activateVariant(idx);
+            }
+            const viewsTabBtn = document.querySelector('.tab-btn[data-target="views"]');
+            if (viewsTabBtn) viewsTabBtn.click();
+        });
     });
 }
+
+async function activateVariant(index) {
+    try {
+        await fetchJSON('/api/timetable/variant/' + index, { method: 'POST' });
+        activeVariantIndex = index;
+        renderVariantsComparison(candidateVariants, activeVariantIndex);
+        showNotification(`Activated Candidate Schedule ${index + 1}`, 'success');
+
+        const activeBtn = document.querySelector('.view-btn.active');
+        if (activeBtn) {
+            activeBtn.click();
+        }
+    } catch (e) {
+        showNotification('Failed to activate timetable candidate', 'error');
+    }
+}
+
+document.getElementById('btn-generate-multiple')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate-multiple');
+    const singleBtn = document.getElementById('btn-generate');
+    const statusDiv = document.getElementById('generate-status');
+    const statusCard = document.getElementById('gen-status-card');
+    const statusText = document.getElementById('gen-status-text');
+    const scoreDiv = document.getElementById('gen-score');
+    const diagDiv = document.getElementById('gen-diagnostics');
+
+    btn.disabled = true;
+    if (singleBtn) singleBtn.disabled = true;
+    btn.innerHTML = 'Generating 3 Alternatives...';
+    statusDiv.style.display = 'block';
+    statusCard.className = 'status-card';
+    statusText.textContent = 'Exploring solution space with randomized heuristic orderings...';
+    statusText.style.color = 'var(--color-text-secondary)';
+    scoreDiv.style.display = 'none';
+    diagDiv.style.display = 'none';
+
+    try {
+        const res = await fetchJSON('/api/generate-multiple', {
+            method: 'POST',
+            body: JSON.stringify({ count: 3, min_diversity_pct: 15 })
+        });
+
+        if (res.status === 'success' || res.status === 'partial') {
+            statusCard.className = 'status-card success-card';
+            statusText.textContent = `Generated ${res.generated} candidate timetable alternatives with verified diversity`;
+            statusText.style.color = 'var(--color-success)';
+
+            const variants = res.variants || res.alternatives || [];
+            renderVariantsComparison(variants, res.active_variant_index || 0);
+
+            const btnExport = document.getElementById('btn-export-excel');
+            if (btnExport) btnExport.style.display = 'inline-flex';
+            const btnPrint = document.getElementById('btn-print');
+            if (btnPrint) btnPrint.style.display = 'inline-block';
+
+            fetchPublishingStatus();
+
+            showNotification(`Generated ${res.generated} candidate alternatives successfully!`, 'success');
+        } else {
+            statusCard.className = 'status-card error-card';
+            statusText.textContent = 'Candidate Generation Infeasible';
+            statusText.style.color = 'var(--color-danger)';
+            diagDiv.style.display = 'block';
+            diagDiv.innerHTML = `<strong>Diagnostic Conflict:</strong> ${res.message || 'Infeasible problem'}<br><pre class="diagnostics-pre">${res.diagnostics || ''}</pre>`;
+        }
+    } catch (e) {
+        statusCard.className = 'status-card error-card';
+        statusText.textContent = `Error: ${e.message}`;
+        statusText.style.color = 'var(--color-danger)';
+    } finally {
+        btn.disabled = false;
+        if (singleBtn) singleBtn.disabled = false;
+        btn.innerHTML = 'Generate 3 Alternatives';
+    }
+});
 
 
 

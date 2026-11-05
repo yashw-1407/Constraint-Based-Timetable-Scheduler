@@ -372,3 +372,4 @@ def parse_and_validate_excel(file_bytes: bytes) -> Tuple[bool, dict, List[str], 
     success = (len(errors) == 0)
 
     return success, counts, errors, parsed
+

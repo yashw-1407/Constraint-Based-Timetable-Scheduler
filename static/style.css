@@ -1169,6 +1169,104 @@ select:focus {
     color: var(--color-text-muted);
 }
 
+/* ── Lifecycle & Publishing Badges ── */
+.lifecycle-chip {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px var(--space-3);
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.chip-draft {
+    background-color: var(--color-warning-bg);
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
+}
+
+.chip-published {
+    background-color: var(--color-success-bg);
+    color: var(--color-success);
+    border-color: var(--color-success-border);
+}
+
+/* ── Candidate Variants Comparison Grid ── */
+.variants-comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+.variant-card {
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-surface-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.variant-card.active-variant {
+    border-color: var(--color-brand-primary);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.variant-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.variant-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+}
+
+.variant-metrics-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.variant-score-badge {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-success);
+    font-variant-numeric: tabular-nums;
+}
+
+.variant-diversity-tag {
+    font-size: 11.5px;
+    color: var(--color-text-secondary);
+}
+
+.variant-chips-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+
+.variant-active-indicator {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--color-brand-primary);
+    background-color: var(--color-brand-primary-subtle);
+    border: 1px solid var(--color-brand-primary-border);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    text-align: center;
+}
+
 /* ── Modal Dialog ── */
 .modal-backdrop {
     position: fixed;

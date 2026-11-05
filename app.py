@@ -477,7 +477,14 @@ def select_variant(index):
         
     engine.load_assignments_data(variants[index]['assignments_data'])
     result['active_variant_index'] = index
-    return jsonify({'status': 'ok'})
+    result['assignments'] = engine._format_assignments()
+    result['soft_score'] = variants[index].get('soft_score', {})
+    save_data(app_data)
+    return jsonify({
+        'status': 'ok',
+        'active_variant_index': index,
+        'soft_score': result['soft_score']
+    })
 
 
 @app.route('/api/timetable/metadata', methods=['GET'])
@@ -493,6 +500,45 @@ def get_metadata():
         'active_variant_index': active_idx,
         'active_score': score
     })
+
+
+@app.route('/api/timetable/status', methods=['GET'])
+def get_publishing_status():
+    pub = app_data.get('publishing') or {
+        'status': 'DRAFT',
+        'published_at': None,
+        'term': 'Academic Year 2026-27 (Term 1)'
+    }
+    return jsonify(pub)
+
+
+@app.route('/api/timetable/publish', methods=['POST'])
+def publish_timetable():
+    if not app_data.get('engine') or not app_data.get('result'):
+        return jsonify({'error': 'No generated timetable available to publish'}), 400
+    from datetime import datetime, timezone
+    data = request.get_json(silent=True) or {}
+    term = data.get('term', 'Academic Year 2026-27 (Term 1)')
+    pub = {
+        'status': 'PUBLISHED',
+        'published_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+        'term': term
+    }
+    app_data['publishing'] = pub
+    save_data(app_data)
+    return jsonify({'status': 'ok', 'publishing': pub})
+
+
+@app.route('/api/timetable/unpublish', methods=['POST'])
+def unpublish_timetable():
+    pub = {
+        'status': 'DRAFT',
+        'published_at': None,
+        'term': (app_data.get('publishing') or {}).get('term', 'Academic Year 2026-27 (Term 1)')
+    }
+    app_data['publishing'] = pub
+    save_data(app_data)
+    return jsonify({'status': 'ok', 'publishing': pub})
 
 
 @app.route('/api/generate-multiple', methods=['POST'])
@@ -534,6 +580,12 @@ def generate_multiple():
         # Convert variants -> alternatives mapping to maintain compatibility with existing variant code
         if 'alternatives' in result:
             result['variants'] = result['alternatives']
+            result['active_variant_index'] = 0
+            if result['variants']:
+                engine.load_assignments_data(result['variants'][0]['assignments_data'])
+                result['assignments'] = engine._format_assignments()
+                result['soft_score'] = result['variants'][0]['soft_score']
+                result['status'] = 'success'
             
         save_data(app_data)
         return jsonify(result)
