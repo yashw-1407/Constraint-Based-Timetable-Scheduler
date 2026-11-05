@@ -44,13 +44,14 @@ def save_data(app_data):
     """Transactional save to JSON file."""
     with _lock:
         data = {
-            'config': app_data['config'].to_dict() if app_data['config'] else None,
-            'rooms': [r.to_dict() for r in app_data['rooms']],
-            'faculty': [f.to_dict() for f in app_data['faculty']],
-            'sections': [s.to_dict() for s in app_data['sections']],
-            'batches': [b.to_dict() for b in app_data['batches']],
-            'courses': [c.to_dict() for c in app_data['courses']],
+            'config': app_data['config'].to_dict() if app_data.get('config') else None,
+            'rooms': [r.to_dict() for r in app_data.get('rooms', [])],
+            'faculty': [f.to_dict() for f in app_data.get('faculty', [])],
+            'sections': [s.to_dict() for s in app_data.get('sections', [])],
+            'batches': [b.to_dict() for b in app_data.get('batches', [])],
+            'courses': [c.to_dict() for c in app_data.get('courses', [])],
             'publishing': app_data.get('publishing'),
+            'result': app_data.get('result'),
             'terms': [t.to_dict() for t in app_data.get('terms', [])],
             'departments': [d.to_dict() for d in app_data.get('departments', [])],
             'active_term_id': app_data.get('active_term_id', 'term_2026_fall'),
@@ -82,6 +83,7 @@ def load_data(app_data):
             app_data['batches'] = [Batch.from_dict(d) for d in data.get('batches', [])]
             app_data['courses'] = [Course.from_dict(d) for d in data.get('courses', [])]
             app_data['publishing'] = data.get('publishing')
+            app_data['result'] = data.get('result')
 
             loaded_terms = [AcademicTerm.from_dict(d) for d in data.get('terms', [])]
             app_data['terms'] = loaded_terms if loaded_terms else [t for t in DEFAULT_TERMS]
@@ -89,9 +91,26 @@ def load_data(app_data):
             loaded_depts = [Department.from_dict(d) for d in data.get('departments', [])]
             app_data['departments'] = loaded_depts if loaded_depts else [d for d in DEFAULT_DEPARTMENTS]
 
-            app_data['active_term_id'] = data.get('active_term_id', 'term_2026_fall')
+            loaded_term_id = data.get('active_term_id', 'term_2026_fall')
+            app_data['active_term_id'] = loaded_term_id if isinstance(loaded_term_id, str) and loaded_term_id else 'term_2026_fall'
 
             loaded_users = [User.from_dict(d) for d in data.get('users', [])]
             app_data['users'] = loaded_users if loaded_users else get_default_users()
+
+            if app_data.get('result') and app_data.get('config') and app_data['result'].get('assignments_data'):
+                try:
+                    from scheduler import SchedulingEngine
+                    eng = SchedulingEngine(
+                        app_data['config'],
+                        app_data['courses'],
+                        app_data['rooms'],
+                        app_data['faculty'],
+                        app_data['sections'],
+                        app_data['batches']
+                    )
+                    eng.load_assignments_data(app_data['result']['assignments_data'])
+                    app_data['engine'] = eng
+                except Exception as e:
+                    print(f"Engine restore warning in load_data: {e}")
         except Exception as e:
             print(f"Error loading database: {e}")

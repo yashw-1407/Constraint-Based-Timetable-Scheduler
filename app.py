@@ -55,6 +55,39 @@ app_data = {
 # Load existing data on startup
 load_data(app_data)
 
+def _seed_initial_state_if_needed():
+    if not app_data.get('config') or not app_data.get('courses') or not app_data.get('result'):
+        try:
+            demo = get_demo_data('standard')
+            app_data['config'] = demo['config']
+            app_data['rooms'] = demo['rooms']
+            app_data['faculty'] = demo['faculty']
+            app_data['sections'] = demo['sections']
+            app_data['batches'] = demo.get('batches', [])
+            app_data['courses'] = demo['courses']
+            engine = SchedulingEngine(
+                app_data['config'],
+                app_data['courses'],
+                app_data['rooms'],
+                app_data['faculty'],
+                app_data['sections'],
+                app_data['batches']
+            )
+            res = engine.solve()
+            app_data['engine'] = engine
+            app_data['result'] = res
+            app_data['publishing'] = {
+                'status': 'PUBLISHED',
+                'is_published': True,
+                'published_at': 'Initial System Setup',
+                'term': 'Fall 2026-27 (Term 1)'
+            }
+            save_data(app_data)
+        except Exception as e:
+            print(f"Startup seeding warning: {e}")
+
+_seed_initial_state_if_needed()
+
 
 # ---------------------------------------------------------------------------
 # Frontend route
@@ -610,10 +643,33 @@ def generate_timetable():
 # ---------------------------------------------------------------------------
 # Timetable View APIs
 # ---------------------------------------------------------------------------
+def _get_or_restore_engine():
+    engine = app_data.get('engine')
+    if engine and hasattr(engine, 'assignments') and len(engine.assignments) > 0:
+        return engine
+    result = app_data.get('result')
+    if result and result.get('assignments_data') and app_data.get('config'):
+        try:
+            engine = SchedulingEngine(
+                app_data['config'],
+                app_data['courses'],
+                app_data['rooms'],
+                app_data['faculty'],
+                app_data['sections'],
+                app_data['batches']
+            )
+            engine.load_assignments_data(result['assignments_data'])
+            app_data['engine'] = engine
+            return engine
+        except Exception as e:
+            print(f"Error restoring engine in _get_or_restore_engine: {e}")
+    return engine
+
+
 @app.route('/api/timetable/master', methods=['GET'])
 def get_master_timetable():
     """Return the master timetable as a flat list."""
-    engine = app_data.get('engine')
+    engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
         return jsonify({'error': 'Timetable not generated or failed'}), 400
@@ -637,7 +693,7 @@ def get_room_timetable(room_id):
 
 def _get_view(view_type, entity_id):
     """Delegate to the engine's view method."""
-    engine = app_data.get('engine')
+    engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
         return jsonify({'error': 'Timetable not generated or failed'}), 400
@@ -654,7 +710,7 @@ def _get_view(view_type, entity_id):
 
 @app.route('/api/timetable/variant/<int:index>', methods=['POST'])
 def select_variant(index):
-    engine = app_data.get('engine')
+    engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
         return jsonify({'error': 'No generated timetable found'}), 400
@@ -694,47 +750,32 @@ def get_metadata():
 def get_publishing_status():
     pub = app_data.get('publishing') or {
         'status': 'DRAFT',
+        'is_published': False,
         'published_at': None,
         'term': 'Academic Year 2026-27 (Term 1)'
     }
+    if 'is_published' not in pub:
+        pub['is_published'] = (pub.get('status') == 'PUBLISHED')
     return jsonify(pub)
 
 
 @app.route('/api/timetable/publish', methods=['POST'])
 def publish_timetable():
-    if not app_data.get('engine') or not app_data.get('result'):
+    engine = _get_or_restore_engine()
+    if not engine or not app_data.get('result'):
         return jsonify({'error': 'No generated timetable available to publish'}), 400
     from datetime import datetime, timezone
     data = request.get_json(silent=True) or {}
     term = data.get('term', 'Academic Year 2026-27 (Term 1)')
     pub = {
         'status': 'PUBLISHED',
+        'is_published': True,
         'published_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
         'term': term
     }
     app_data['publishing'] = pub
     save_data(app_data)
     return jsonify({'status': 'ok', 'publishing': pub})
-
-
-def _get_or_restore_engine():
-    engine = app_data.get('engine')
-    if engine and hasattr(engine, 'assignments') and len(engine.assignments) > 0:
-        return engine
-    result = app_data.get('result')
-    if result and result.get('assignments_data') and app_data.get('config'):
-        engine = SchedulingEngine(
-            app_data['config'],
-            app_data['courses'],
-            app_data['rooms'],
-            app_data['faculty'],
-            app_data['sections'],
-            app_data['batches']
-        )
-        engine.load_assignments_data(result['assignments_data'])
-        app_data['engine'] = engine
-        return engine
-    return engine
 
 
 @app.route('/api/timetable/validate-move', methods=['POST'])
@@ -838,6 +879,7 @@ def api_execute_swap():
 def unpublish_timetable():
     pub = {
         'status': 'DRAFT',
+        'is_published': False,
         'published_at': None,
         'term': (app_data.get('publishing') or {}).get('term', 'Academic Year 2026-27 (Term 1)')
     }
@@ -938,7 +980,7 @@ def download_trace(fmt):
 @app.route('/api/validation', methods=['GET'])
 def validate_current_timetable():
     """Post-generation validation: re-check all hard constraints."""
-    engine = app_data.get('engine')
+    engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
         return jsonify({'error': 'No valid timetable to validate'}), 400
@@ -1039,8 +1081,11 @@ def load_demo():
 @app.route('/api/clear', methods=['POST'])
 def clear_data():
     """Reset all application state."""
-    for key in app_data:
-        app_data[key] = None if key in ('config', 'engine', 'result') else []
+    for key in ('config', 'engine', 'result', 'publishing'):
+        app_data[key] = None
+    for key in ('rooms', 'faculty', 'sections', 'batches', 'courses'):
+        app_data[key] = []
+    app_data['active_term_id'] = 'term_2026_fall'
     app_data['terms'] = [t for t in DEFAULT_TERMS]
     app_data['departments'] = [d for d in DEFAULT_DEPARTMENTS]
     app_data['users'] = get_default_users()
@@ -1130,6 +1175,7 @@ def import_excel_data():
 def export_timetable_excel():
     """Download multi-tab formatted Excel workbook of current generated timetable."""
     try:
+        _get_or_restore_engine()
         buf = exporter.generate_timetable_excel(app_data)
         return send_file(
             buf,

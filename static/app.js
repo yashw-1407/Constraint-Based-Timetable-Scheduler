@@ -56,7 +56,13 @@ window.addEventListener('DOMContentLoaded', () => {
     const hash = (window.location.hash || '').replace('#', '');
     if (hash) {
         const btn = document.querySelector(`.tab-btn[data-target="${hash}"]`);
-        if (btn) btn.click();
+        if (btn) {
+            btn.click();
+        } else {
+            loadTabData('config');
+        }
+    } else {
+        loadTabData('config');
     }
 });
 
@@ -169,16 +175,23 @@ document.getElementById('form-config').addEventListener('submit', async (e) => {
 });
 
 async function loadTimeSlots() {
+    const list = document.getElementById('time-slots-list');
+    if (!list) return;
     try {
         const slots = await fetchJSON('/api/time-slots');
-        const list = document.getElementById('time-slots-list');
         list.innerHTML = '';
-        slots.forEach(slot => {
-            const li = document.createElement('li');
-            li.textContent = `Slot ${slot.index}: ${slot.start_time} - ${slot.end_time}`;
-            list.appendChild(li);
-        });
-    } catch (e) { }
+        if (Array.isArray(slots) && slots.length > 0) {
+            slots.forEach(slot => {
+                const li = document.createElement('li');
+                li.textContent = `Slot ${slot.index}: ${slot.start_time} - ${slot.end_time}`;
+                list.appendChild(li);
+            });
+        } else {
+            list.innerHTML = '<li style="color: var(--color-text-secondary); list-style: none;">No time slots configured. Set hours above and click Save Configuration.</li>';
+        }
+    } catch (e) {
+        list.innerHTML = '<li style="color: var(--color-text-secondary); list-style: none;">No configuration saved yet.</li>';
+    }
 }
 
 document.getElementById('btn-load-demo').addEventListener('click', async () => {
@@ -189,7 +202,12 @@ document.getElementById('btn-load-demo').addEventListener('click', async () => {
             body: JSON.stringify({ scenario: scenario })
         });
         showNotification(res.message);
+        globalConfig = null;
         loadConfig();
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab && activeTab.getAttribute('data-target') !== 'config') {
+            loadTabData(activeTab.getAttribute('data-target'));
+        }
     } catch (e) { }
 });
 document.getElementById('btn-clear-data').addEventListener('click', async () => {
@@ -619,20 +637,22 @@ async function fetchConfigForViews() {
 }
 
 function generateTimelineColumns(config, timeSlots) {
+    if (!config) return [];
     let columns = [];
     let breaks = [...(config.breaks || [])];
     if (config.lunch_start && config.lunch_end) {
         breaks.push({ start_time: config.lunch_start, end_time: config.lunch_end, is_lunch: true });
     }
-    breaks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    breaks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     
-    let sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    let safeSlots = Array.isArray(timeSlots) ? timeSlots : [];
+    let sortedSlots = [...safeSlots].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     
     let all_blocks = [];
     sortedSlots.forEach(s => all_blocks.push({ type: 'slot', ...s }));
     breaks.forEach(b => all_blocks.push({ type: 'break', ...b }));
     
-    all_blocks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    all_blocks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     return all_blocks;
 }
 
@@ -646,10 +666,16 @@ async function fetchMasterAssignments() {
 
 function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlots) {
     const container = document.getElementById('view-content');
+    if (!container) return;
     container.innerHTML = '';
     
+    if (!config || !Array.isArray(timeSlots) || timeSlots.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Configuration is not set or time slots could not be calculated.</p></div>';
+        return;
+    }
+
     if (!assignments || assignments.length === 0) {
-        container.innerHTML = '<p>No timetable data available.</p>';
+        container.innerHTML = '<div class="empty-state"><p>No timetable data available. Generate a timetable from the Generate tab or load demo data.</p></div>';
         return;
     }
 
@@ -827,7 +853,7 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
 async function renderMasterView() {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'master', null, config, timeSlots);
 }
@@ -835,7 +861,7 @@ async function renderMasterView() {
 async function renderSectionView(sectionId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'section', sectionId, config, timeSlots);
 }
@@ -843,7 +869,7 @@ async function renderSectionView(sectionId) {
 async function renderFacultyView(facultyId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'faculty', facultyId, config, timeSlots);
 }
@@ -851,7 +877,7 @@ async function renderFacultyView(facultyId) {
 async function renderRoomView(roomId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'room', roomId, config, timeSlots);
 }

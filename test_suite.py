@@ -568,5 +568,13 @@ class TestTimetableScheduler(unittest.TestCase):
         me_logged_out = self.client.get('/api/auth/me').get_json()
         self.assertFalse(me_logged_out['authenticated'])
 
+    @classmethod
+    def tearDownClass(cls):
+        """Restore standard demo dataset and solve timetable for clean dev environment."""
+        client = app.test_client()
+        client.post('/api/load-demo', json={'scenario': 'standard'})
+        client.post('/api/generate')
+        client.post('/api/timetable/publish')
+
 if __name__ == '__main__':
     unittest.main()

@@ -228,12 +228,17 @@
             }
 
             async function loadConfigAndSlots() {
-                const [cfgRes, tsRes] = await Promise.all([
-                    fetch('/api/config'),
-                    fetch('/api/time-slots')
-                ]);
-                if (cfgRes.ok) appConfig = await cfgRes.json();
-                if (tsRes.ok) appTimeSlots = await tsRes.json();
+                try {
+                    const [cfgRes, tsRes] = await Promise.all([
+                        fetch('/api/config'),
+                        fetch('/api/time-slots')
+                    ]);
+                    if (cfgRes.ok) appConfig = await cfgRes.json();
+                    if (tsRes.ok) appTimeSlots = await tsRes.json();
+                    else appTimeSlots = [];
+                } catch (e) {
+                    appTimeSlots = [];
+                }
             }
 
             async function loadAssignments() {
@@ -326,10 +331,14 @@
 
             function renderGrid() {
                 const container = document.getElementById('portal-timetable-content');
-                if (!container || !appConfig || !appTimeSlots) return;
+                if (!container) return;
+                if (!appConfig || !Array.isArray(appTimeSlots) || appTimeSlots.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>Schedule configuration is not available yet.</p></div>';
+                    return;
+                }
 
                 if (!allAssignments || allAssignments.length === 0) {
-                    container.innerHTML = '<div class="empty-state"><p>No timetable data available.</p></div>';
+                    container.innerHTML = '<div class="empty-state"><p>No timetable data available for this view.</p></div>';
                     return;
                 }
 
@@ -470,18 +479,20 @@
             }
 
             function buildTimeline(config, timeSlots) {
+                if (!config) return [];
                 const cols = [];
                 const breaks = [...(config.breaks || [])];
                 if (config.lunch_start && config.lunch_end) {
                     breaks.push({ start_time: config.lunch_start, end_time: config.lunch_end, is_lunch: true });
                 }
-                breaks.sort((a, b) => a.start_time.localeCompare(b.start_time));
-                const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+                breaks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+                const safeSlots = Array.isArray(timeSlots) ? timeSlots : [];
+                const sortedSlots = [...safeSlots].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
 
                 const all = [];
                 sortedSlots.forEach(s => all.push({ type: 'slot', ...s }));
                 breaks.forEach(b => all.push({ type: 'break', ...b }));
-                all.sort((a, b) => a.start_time.localeCompare(b.start_time));
+                all.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
                 return all;
             }
 
