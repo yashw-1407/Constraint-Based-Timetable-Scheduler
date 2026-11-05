@@ -43,9 +43,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         e.target.classList.add('active');
         const targetId = e.target.getAttribute('data-target');
         document.getElementById(targetId).classList.add('active');
+        window.location.hash = targetId;
         
         loadTabData(targetId);
     });
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    const hash = (window.location.hash || '').replace('#', '');
+    if (hash) {
+        const btn = document.querySelector(`.tab-btn[data-target="${hash}"]`);
+        if (btn) btn.click();
+    }
 });
 
 // Load data based on tab
@@ -505,15 +514,15 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
             let detailsHtml = '';
             if (bestVariant.soft_score && bestVariant.soft_score.details) {
-                detailsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+                detailsHtml = '<div class="score-details-list">' +
                     Object.entries(bestVariant.soft_score.details)
-                    .map(([k,v]) => `<span style="background:white;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:13px;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
+                    .map(([k,v]) => `<span class="score-chip">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
                     .join('') + '</div>';
             }
             scoreDiv.innerHTML = `
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                    <div style="font-size:1.4rem;font-weight:700;color:var(--success);">${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}% Quality</div>
-                    <div style="font-size:13px;color:var(--text-muted);">${stats.total_sessions || 0} sessions · ${stats.backtracks || 0} backtracks · ${stats.time_ms || 0}ms</div>
+                <div class="score-header-row">
+                    <div class="score-percent-value">${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}% Quality Score</div>
+                    <div class="score-meta-stats">${stats.total_sessions || 0} sessions | ${stats.backtracks || 0} backtracks | ${stats.time_ms || 0}ms</div>
                 </div>
                 ${detailsHtml}
             `;
@@ -525,10 +534,10 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
         } else {
             statusCard.className = 'status-card error-card';
-            statusText.innerHTML = `Generation Failed — ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
+            statusText.innerHTML = `Generation Infeasible: ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
             statusText.style.color = 'var(--danger)';
             diagDiv.style.display = 'block';
-            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message || 'Infeasible problem'}<br><pre style="font-size:12px;margin-top:8px;white-space:pre-wrap;">${res.diagnostics || ''}</pre>`;
+            diagDiv.innerHTML = `<strong>Diagnostic Conflict:</strong> ${res.message || 'Infeasible problem'}<br><pre class="diagnostics-pre">${res.diagnostics || ''}</pre>`;
         }
     } catch (e) {
         statusCard.className = 'status-card error-card';
@@ -544,13 +553,13 @@ document.getElementById('btn-validate').addEventListener('click', async () => {
     const reportDiv = document.getElementById('validation-report');
     const content = document.getElementById('val-content');
     reportDiv.style.display = 'block';
-    content.innerHTML = 'Validating...';
+    content.innerHTML = '<span class="val-pending">Validating configuration against hard constraints...</span>';
     try {
         const res = await fetchJSON('/api/validation');
         if (res.valid) {
-            content.innerHTML = '<span style="color:green;">All hard constraints satisfied. No conflicts found.</span>';
+            content.innerHTML = '<div class="val-success-banner">All hard constraints satisfied. No conflicts found.</div>';
         } else {
-            content.innerHTML = `<ul style="color:red;">${res.conflicts.map(c => `<li>${c}</li>`).join('')}</ul>`;
+            content.innerHTML = `<ul class="val-error-list">${res.conflicts.map(c => `<li>${c}</li>`).join('')}</ul>`;
         }
     } catch (e) { }
 });
@@ -761,7 +770,10 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
     });
       
         table.appendChild(tbody);
-    container.appendChild(table);
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'table-scroll';
+    scrollContainer.appendChild(table);
+    container.appendChild(scrollContainer);
 }
 async function renderMasterView() {
     const config = await fetchConfigForViews();

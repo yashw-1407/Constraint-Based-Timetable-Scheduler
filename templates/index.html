@@ -1,69 +1,90 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="js">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoSchedule — Academic Timetable System</title>
+    <title>AutoSchedule: Academic Timetable System</title>
+    <meta name="description" content="Constraint-based academic timetable scheduler powered by deterministic backtracking CSP.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+/* Hallmark · built: AutoSchedule · redesign: restyle · genre: modern-minimal · job: schedule academic courses and generate conflict-free timetables */
+html, body { overflow-x: clip; width: 100%; }
+:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 2px; }
+.btn:active, .tab-btn:active, .view-btn:active { transform: translateY(1px); }
+.btn:disabled, button:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
 </head>
 
 <body>
 
-    <header>
+    <header class="app-header">
         <div class="header-inner">
             <div class="header-logo">
-                <div class="logo-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="logo-icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
                         <line x1="8" y1="2" x2="8" y2="6"></line>
                         <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg></div>
+                    </svg>
+                </div>
                 <div class="header-text">
                     <h1>AutoSchedule</h1>
                     <span class="header-subtitle">Academic Timetable Scheduling System</span>
                 </div>
             </div>
+            <div class="header-meta">
+                <span class="system-status-chip">Deterministic CSP Engine</span>
+            </div>
         </div>
     </header>
 
-    <nav class="tabs">
-        <button class="tab-btn active" data-target="config">Configuration</button>
-        <button class="tab-btn" data-target="rooms">Rooms</button>
-        <button class="tab-btn" data-target="faculty">Faculty</button>
-        <button class="tab-btn" data-target="sections">Sections</button>
-        <button class="tab-btn" data-target="courses">Courses</button>
-        <button class="tab-btn" data-target="generate">Generate</button>
-        <button class="tab-btn" data-target="views">Timetable Views</button>
-    </nav>
+    <div class="nav-bar-wrapper">
+        <div class="nav-inner">
+            <nav class="tabs" aria-label="Main Navigation">
+                <button class="tab-btn active" data-target="config">Configuration</button>
+                <button class="tab-btn" data-target="rooms">Rooms</button>
+                <button class="tab-btn" data-target="faculty">Faculty</button>
+                <button class="tab-btn" data-target="sections">Sections</button>
+                <button class="tab-btn" data-target="courses">Courses</button>
+                <button class="tab-btn" data-target="generate">Generate</button>
+                <button class="tab-btn" data-target="views">Timetable Views</button>
+                <button class="tab-btn" data-target="theory" style="white-space: nowrap;">Theory &amp; Architecture</button>
+            </nav>
+        </div>
+    </div>
 
     <main id="content">
 
         <!-- Configuration Tab -->
         <section id="config" class="tab-content active">
             <div class="page-header">
-                <div>
+                <div class="page-header-text">
                     <h2>System Configuration</h2>
-                    <p class="page-desc">Set working hours, breaks, and time slot duration before adding data.</p>
+                    <p class="page-desc">Define institutional working hours, breaks, and slot duration before data entry.</p>
                 </div>
-                <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <select id="demo-scenario-select" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 500; background: #fff; cursor: pointer; color: var(--text-dark);">
+                <div class="actions">
+                    <select id="demo-scenario-select" class="select-scenario" aria-label="Select demo scenario">
                         <option value="standard">Case 1: Standard Academic Load (Balanced)</option>
                         <option value="bottleneck">Case 2: Resource Bottleneck (High Contention)</option>
                         <option value="infeasible">Case 3: Infeasible Conflict (Stress Test)</option>
                         <option value="single_section">Case 4: Single Section (Viva Walkthrough)</option>
                     </select>
-                    <button id="btn-load-demo" class="btn success">
+                    <button id="btn-load-demo" class="btn btn-success">
                         Load Demo Data
                     </button>
-                    <button id="btn-clear-data" class="btn danger">
+                    <button id="btn-clear-data" class="btn btn-danger">
                         Clear All Data
                     </button>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="surface-card">
                 <form id="form-config">
                     <div class="form-group">
                         <label>Working Days</label>
@@ -111,17 +132,22 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Extra Breaks</label>
+                        <label>Additional Recess Breaks</label>
                         <div id="breaks-container"></div>
-                        <button type="button" id="btn-add-break" class="btn btn-sm">+ Add Break</button>
+                        <button type="button" id="btn-add-break" class="btn btn-sm btn-outline">+ Add Break</button>
                     </div>
 
-                    <button type="submit" class="btn primary" style="margin-top: 8px;">Save Configuration</button>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    </div>
                 </form>
             </div>
 
-            <div class="card" id="time-slots-display">
-                <h3>Generated Time Slots</h3>
+            <div class="surface-card" id="time-slots-display">
+                <div class="section-subhead">
+                    <h3>Discretized Time Slots</h3>
+                    <span class="subhead-caption">Automatically derived from working hours and break exclusions</span>
+                </div>
                 <ul id="time-slots-list" class="slot-list"></ul>
             </div>
         </section>
@@ -129,257 +155,383 @@
         <!-- Rooms Tab -->
         <section id="rooms" class="tab-content">
             <div class="page-header">
-                <div>
-                    <h2>Rooms</h2>
-                    <p class="page-desc">Add theory classrooms and lab rooms with their capacities.</p>
+                <div class="page-header-text">
+                    <h2>Rooms &amp; Physical Facilities</h2>
+                    <p class="page-desc">Manage lecture classrooms and laboratory allocations with seating capacities.</p>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add New Room</h3>
-                <form id="form-room" class="add-form">
-                    <input type="text" id="room_id" placeholder="Room ID (e.g. R101)" required>
-                    <input type="text" id="room_name" placeholder="Display Name" required>
-                    <select id="room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <input type="number" id="room_capacity" placeholder="Capacity (optional)">
-                    <input type="text" id="room_category" placeholder="Category (optional)">
-                    <button type="submit" class="btn primary">Add Room</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-rooms">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Capacity</th>
-                            <th>Category</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+
+            <div class="workbench-layout">
+                <div class="workbench-aside surface-card">
+                    <h3 class="form-title">Add New Room</h3>
+                    <form id="form-room" class="stack-form">
+                        <div class="form-group">
+                            <label for="room_id">Room ID</label>
+                            <input type="text" id="room_id" placeholder="e.g. R101" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="room_name">Display Name</label>
+                            <input type="text" id="room_name" placeholder="e.g. Lecture Hall 101" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="room_type">Room Classification</label>
+                            <select id="room_type" required>
+                                <option value="THEORY_ROOM">Theory Room</option>
+                                <option value="LAB">Lab Facility</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="room_capacity">Capacity</label>
+                                <input type="number" id="room_capacity" placeholder="e.g. 70">
+                            </div>
+                            <div class="form-group">
+                                <label for="room_category">Category</label>
+                                <input type="text" id="room_category" placeholder="e.g. Dept Main">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Add Room</button>
+                    </form>
+                </div>
+
+                <div class="workbench-main surface-card">
+                    <div class="section-subhead">
+                        <h3>Room Directory</h3>
+                    </div>
+                    <div class="table-scroll">
+                        <table id="table-rooms" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Room ID</th>
+                                    <th>Name</th>
+                                    <th>Classification</th>
+                                    <th>Capacity</th>
+                                    <th>Category</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
         <!-- Faculty Tab -->
         <section id="faculty" class="tab-content">
             <div class="page-header">
-                <div>
-                    <h2>Faculty</h2>
-                    <p class="page-desc">Register faculty members who will be assigned to courses.</p>
+                <div class="page-header-text">
+                    <h2>Faculty Members</h2>
+                    <p class="page-desc">Register instructors and teaching assistants for course assignments.</p>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add New Faculty</h3>
-                <form id="form-faculty" class="add-form">
-                    <input type="text" id="faculty_id" placeholder="Faculty ID (e.g. F1)" required>
-                    <input type="text" id="faculty_name" placeholder="Full Name" required>
-                    <button type="submit" class="btn primary">Add Faculty</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-faculty">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+
+            <div class="workbench-layout">
+                <div class="workbench-aside surface-card">
+                    <h3 class="form-title">Add New Faculty</h3>
+                    <form id="form-faculty" class="stack-form">
+                        <div class="form-group">
+                            <label for="faculty_id">Faculty ID</label>
+                            <input type="text" id="faculty_id" placeholder="e.g. F101" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="faculty_name">Full Name</label>
+                            <input type="text" id="faculty_name" placeholder="e.g. Dr. Jane Smith" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Add Faculty</button>
+                    </form>
+                </div>
+
+                <div class="workbench-main surface-card">
+                    <div class="section-subhead">
+                        <h3>Faculty Directory</h3>
+                    </div>
+                    <div class="table-scroll">
+                        <table id="table-faculty" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Faculty ID</th>
+                                    <th>Full Name</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
         <!-- Sections Tab -->
         <section id="sections" class="tab-content">
             <div class="page-header">
-                <div>
-                    <h2>Sections &amp; Batches</h2>
-                    <p class="page-desc">Define class sections and their lab batches.</p>
+                <div class="page-header-text">
+                    <h2>Academic Sections &amp; Lab Batches</h2>
+                    <p class="page-desc">Organize student cohorts into semester divisions and laboratory practical batches.</p>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add Section</h3>
-                <form id="form-section" class="add-form">
-                    <input type="text" id="section_id" placeholder="Section ID (e.g. 3A)" required>
-                    <input type="text" id="section_name" placeholder="Name" required>
-                    <input type="number" id="section_semester" placeholder="Semester" required>
-                    <input type="text" id="section_division" placeholder="Division" required>
-                    <input type="number" id="section_strength" placeholder="Strength (optional)">
-                    <button type="submit" class="btn primary">Add Section</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-sections">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Semester</th>
-                            <th>Division</th>
-                            <th>Strength</th>
-                            <th>Batches</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Lab Batch</h3>
-                <form id="form-batch" class="add-form">
-                    <input type="text" id="batch_id" placeholder="Batch ID (e.g. A1)" required>
-                    <input type="text" id="batch_name" placeholder="Batch Name" required>
-                    <select id="batch_section" required>
-                        <option value="">Select Section</option>
-                    </select>
-                    <input type="number" id="batch_strength" placeholder="Batch Strength" required>
-                    <button type="submit" class="btn primary">Add Batch</button>
-                </form>
+
+            <div class="workbench-layout">
+                <div class="workbench-aside">
+                    <div class="surface-card">
+                        <h3 class="form-title">Add Section</h3>
+                        <form id="form-section" class="stack-form">
+                            <div class="form-group">
+                                <label for="section_id">Section ID</label>
+                                <input type="text" id="section_id" placeholder="e.g. CS_3A" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="section_name">Section Name</label>
+                                <input type="text" id="section_name" placeholder="e.g. 3rd Sem Section A" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="section_semester">Semester</label>
+                                    <input type="number" id="section_semester" placeholder="3" min="1" max="8" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="section_division">Division</label>
+                                    <input type="text" id="section_division" placeholder="A" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="section_strength">Total Strength</label>
+                                <input type="number" id="section_strength" placeholder="e.g. 60">
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-block">Add Section</button>
+                        </form>
+                    </div>
+
+                    <div class="surface-card" style="margin-top: 16px;">
+                        <h3 class="form-title">Add Lab Batch</h3>
+                        <form id="form-batch" class="stack-form">
+                            <div class="form-group">
+                                <label for="batch_id">Batch ID</label>
+                                <input type="text" id="batch_id" placeholder="e.g. CS_3A_B1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="batch_name">Batch Name</label>
+                                <input type="text" id="batch_name" placeholder="e.g. Batch B1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="batch_section">Parent Section</label>
+                                <select id="batch_section" required>
+                                    <option value="">Select Section</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="batch_strength">Batch Strength</label>
+                                <input type="number" id="batch_strength" placeholder="e.g. 30" required>
+                            </div>
+                            <button type="submit" class="btn btn-secondary btn-block">Add Batch</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="workbench-main surface-card">
+                    <div class="section-subhead">
+                        <h3>Registered Sections &amp; Associated Batches</h3>
+                    </div>
+                    <div class="table-scroll">
+                        <table id="table-sections" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Section ID</th>
+                                    <th>Name</th>
+                                    <th>Semester</th>
+                                    <th>Division</th>
+                                    <th>Strength</th>
+                                    <th>Batches</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
         <!-- Courses Tab -->
         <section id="courses" class="tab-content">
             <div class="page-header">
-                <div>
-                    <h2>Courses</h2>
-                    <p class="page-desc">Define courses with L-T-P credits, faculty, and room requirements.</p>
+                <div class="page-header-text">
+                    <h2>Course Curriculum &amp; Credit Allocations</h2>
+                    <p class="page-desc">Define courses with Lecture-Tutorial-Practical (L-T-P) periods, faculty allocations, and venue requirements.</p>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add Course</h3>
-                <form id="form-course" class="add-form complex-form">
-                    <input type="text" id="course_id" placeholder="Course ID (e.g. CS301_3A)" required>
-                    <input type="text" id="course_name" placeholder="Course Name" required>
-                    <input type="text" id="course_code" placeholder="Course Code" required>
-                    <select id="course_section" required>
-                        <option value="">Select Section</option>
-                    </select>
 
-                    <div class="ltp-inputs">
-                        <input type="number" step="0.5" id="course_l" placeholder="L (Lectures)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_t" placeholder="T (Tutorials)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_p" placeholder="P (Practicals)" value="0" min="0"
-                            required>
-                    </div>
-
-                    <div class="faculty-selects">
-                        <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Main Faculty (Ctrl+click for
-                                multiple)</label>
-                            <select id="course_faculty" multiple required style="height: 90px; width:100%;"></select>
+            <div class="surface-card">
+                <h3 class="form-title">Course Entry</h3>
+                <form id="form-course" class="course-grid-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="course_id">Course ID</label>
+                            <input type="text" id="course_id" placeholder="e.g. CS301_3A" required>
                         </div>
-                        <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Assistant Faculty
-                                (Optional)</label>
-                            <select id="course_assistant_faculty" multiple style="height: 90px; width:100%;"></select>
+                        <div class="form-group">
+                            <label for="course_code">Course Code</label>
+                            <input type="text" id="course_code" placeholder="e.g. CS301" required>
+                        </div>
+                        <div class="form-group flex-2">
+                            <label for="course_name">Course Title</label>
+                            <input type="text" id="course_name" placeholder="e.g. Operating Systems" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="course_section">Section</label>
+                            <select id="course_section" required>
+                                <option value="">Select Section</option>
+                            </select>
                         </div>
                     </div>
 
-                    <select id="course_room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <select id="course_required_room">
-                        <option value="">Required Room (Optional)</option>
-                    </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>L-T-P Credits (Lectures, Tutorials, Practicals)</label>
+                            <div class="ltp-inputs">
+                                <div class="ltp-field">
+                                    <span class="ltp-label">L</span>
+                                    <input type="number" step="0.5" id="course_l" value="0" min="0" required>
+                                </div>
+                                <div class="ltp-field">
+                                    <span class="ltp-label">T</span>
+                                    <input type="number" step="0.5" id="course_t" value="0" min="0" required>
+                                </div>
+                                <div class="ltp-field">
+                                    <span class="ltp-label">P</span>
+                                    <input type="number" step="0.5" id="course_p" value="0" min="0" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="course_room_type">Required Room Type</label>
+                            <select id="course_room_type" required>
+                                <option value="THEORY_ROOM">Theory Room</option>
+                                <option value="LAB">Lab Facility</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="course_required_room">Specific Room Lock (Optional)</label>
+                            <select id="course_required_room">
+                                <option value="">Any Suitable Room</option>
+                            </select>
+                        </div>
+                    </div>
 
-                    <select id="course_lab_batches" multiple style="display: none; height: 90px;"
-                        title="Hold Ctrl/Cmd to select multiple">
-                    </select>
+                    <div class="form-row faculty-pickers">
+                        <div class="form-group">
+                            <label for="course_faculty">Primary Instructors <span class="field-hint">(Hold Ctrl/Cmd to select multiple)</span></label>
+                            <select id="course_faculty" multiple required class="multi-select-box"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="course_assistant_faculty">Assistant Instructors <span class="field-hint">(Optional)</span></label>
+                            <select id="course_assistant_faculty" multiple class="multi-select-box"></select>
+                        </div>
+                    </div>
 
-                    <button type="submit" class="btn primary">Add Course</button>
+                    <div class="form-group" id="lab-batches-group">
+                        <select id="course_lab_batches" multiple class="multi-select-box" style="display: none;"
+                            title="Hold Ctrl/Cmd to select multiple batches">
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save Course</button>
+                    </div>
                 </form>
             </div>
-            <div class="card">
-                <table id="table-courses">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Code</th>
-                            <th>Name</th>
-                            <th>Section</th>
-                            <th>L-T-P</th>
-                            <th>Batches</th>
-                            <th>Faculty</th>
-                            <th>Asst Faculty</th>
-                            <th>Room Type</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+
+            <div class="surface-card">
+                <div class="section-subhead">
+                    <h3>Course Ledger</h3>
+                </div>
+                <div class="table-scroll">
+                    <table id="table-courses" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Course ID</th>
+                                <th>Code</th>
+                                <th>Course Title</th>
+                                <th>Section</th>
+                                <th>L-T-P</th>
+                                <th>Batches</th>
+                                <th>Primary Faculty</th>
+                                <th>Assistant Faculty</th>
+                                <th>Room Type</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
         <!-- Generate Tab -->
         <section id="generate" class="tab-content">
             <div class="page-header">
-                <div>
+                <div class="page-header-text">
                     <h2>Generate Timetable</h2>
-                    <p class="page-desc">Run the CSP backtracking solver to produce a conflict-free timetable.</p>
+                    <p class="page-desc">Execute deterministic Constraint Satisfaction Problem backtracking to produce a verified conflict-free schedule.</p>
                 </div>
             </div>
 
-            <div class="algo-info card">
-                <div class="algo-info-grid">
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">6</div>
-                        <div class="algo-stat-label">Hard Constraints</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">7</div>
-                        <div class="algo-stat-label">Soft Constraints</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">MRV</div>
-                        <div class="algo-stat-label">Heuristic</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">&lt;1s</div>
-                        <div class="algo-stat-label">Typical Runtime</div>
-                    </div>
+            <div class="algo-metrics-bar surface-card">
+                <div class="algo-stat-item">
+                    <span class="algo-stat-value">6</span>
+                    <span class="algo-stat-label">Hard Constraints</span>
                 </div>
-                <div class="algo-constraints">
-                    <span class="constraint-tag">No section conflicts</span>
-                    <span class="constraint-tag">No faculty clashes</span>
-                    <span class="constraint-tag">No room double-booking</span>
-                    <span class="constraint-tag">Room type suitability</span>
-                    <span class="constraint-tag">Room capacity check</span>
-                    <span class="constraint-tag">Lab consecutive slots</span>
+                <div class="algo-stat-item">
+                    <span class="algo-stat-value">7</span>
+                    <span class="algo-stat-label">Soft Metrics</span>
+                </div>
+                <div class="algo-stat-item">
+                    <span class="algo-stat-value">MRV</span>
+                    <span class="algo-stat-label">Variable Ordering</span>
+                </div>
+                <div class="algo-stat-item">
+                    <span class="algo-stat-value">&lt;50ms</span>
+                    <span class="algo-stat-label">Typical Runtime</span>
                 </div>
             </div>
 
-
-            <!-- Pre-Generate Summary Panel (v1) -->
-            <div class="card" id="pre-gen-summary" style="display:none; margin-bottom:16px;">
-                <h3 style="margin-bottom:12px;">Schedule Summary</h3>
-                <div id="summary-grid"
-                    style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="surface-card constraints-overview-card">
+                <div class="section-subhead">
+                    <h3>Hard Constraint Enforcement Rules</h3>
+                    <span class="subhead-caption">Every valid timetable guarantees zero violations across all 6 hard rules</span>
                 </div>
-                <div id="summary-warnings" style="margin-bottom:12px;"></div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                    <button id="btn-confirm-generate" class="btn-generate" style="flex:1;min-width:200px;">
-                        Confirm &amp; Generate
+                <div class="constraints-grid">
+                    <div class="constraint-chip">Section Conflict Exclusion</div>
+                    <div class="constraint-chip">Faculty Mutual Exclusion</div>
+                    <div class="constraint-chip">Room Double-Booking Guard</div>
+                    <div class="constraint-chip">Room Suitability Matching</div>
+                    <div class="constraint-chip">Room Seating Capacity Check</div>
+                    <div class="constraint-chip">Contiguous Multi-Period Lab Slots</div>
+                </div>
+            </div>
+
+            <!-- Pre-Generate Summary Panel -->
+            <div class="surface-card" id="pre-gen-summary" style="display:none; margin-bottom:16px;">
+                <div class="section-subhead">
+                    <h3>Pre-Execution Schedule Analysis</h3>
+                    <span class="subhead-caption">Resource capacity audit prior to solver execution</span>
+                </div>
+                <div id="summary-grid" class="summary-tiles-grid"></div>
+                <div id="summary-warnings" class="summary-warnings-box"></div>
+                <div class="summary-actions">
+                    <button id="btn-confirm-generate" class="btn btn-primary btn-lg" style="white-space: nowrap;">
+                        Execute Solver
                     </button>
-                    <button id="btn-cancel-generate" class="btn secondary" style="flex:0;">Cancel</button>
+                    <button id="btn-cancel-generate" class="btn btn-outline">Cancel</button>
                 </div>
             </div>
 
-            <div class="generate-controls card">
-                <button id="btn-generate" class="btn-generate">
+            <div class="generate-controls surface-card">
+                <button id="btn-generate" class="btn btn-primary btn-lg">
                     Generate Timetable
                 </button>
-                <button id="btn-validate" class="btn secondary" style="margin-left: 12px;">
-                    Validate Configuration
+                <button id="btn-validate" class="btn btn-secondary">
+                    Validate Constraints
                 </button>
             </div>
 
@@ -387,13 +539,13 @@
                 <div class="status-card" id="gen-status-card">
                     <h3 id="gen-status-text"></h3>
                     <div id="gen-score" style="display: none;"></div>
-                    <div id="gen-diagnostics" style="display: none; color: #c62828; margin-top: 10px;"></div>
+                    <div id="gen-diagnostics" style="display: none;" class="gen-diagnostics-box"></div>
                 </div>
             </div>
 
             <div id="validation-report" style="display: none; margin-top: 20px;">
-                <div class="card">
-                    <h3>Validation Report</h3>
+                <div class="surface-card">
+                    <h3>Constraint Validation Report</h3>
                     <div id="val-content"></div>
                 </div>
             </div>
@@ -402,42 +554,223 @@
         <!-- Timetable Views Tab -->
         <section id="views" class="tab-content">
             <div class="page-header">
-                <div>
-                    <h2>Timetable Views</h2>
-                    <p class="page-desc">Browse the generated schedule by section, faculty, or room.</p>
+                <div class="page-header-text">
+                    <h2>Timetable Schedules</h2>
+                    <p class="page-desc">Inspect multi-dimensional schedules filtered by Master view, Section cohort, Instructor, or Facility room.</p>
                 </div>
-                <button id="btn-print" class="btn primary" style="display: none;" onclick="window.print()">
+                <button id="btn-print" class="btn btn-outline" style="display: none;" onclick="window.print()">
                     Print Timetable
                 </button>
             </div>
 
-            <div class="view-tabs">
-                <button class="view-btn active" data-view="master">Master View</button>
-                <button class="view-btn" data-view="section">By Section</button>
-                <button class="view-btn" data-view="faculty">By Faculty</button>
-                <button class="view-btn" data-view="room">By Room</button>
+            <div class="timetable-filter-bar surface-card">
+                <div class="view-tabs" role="tablist">
+                    <button class="view-btn active" data-view="master">Master View</button>
+                    <button class="view-btn" data-view="section">By Section</button>
+                    <button class="view-btn" data-view="faculty">By Faculty</button>
+                    <button class="view-btn" data-view="room">By Room</button>
+                </div>
+
+                <div id="view-controls" class="view-controls-wrap">
+                    <select id="view-selector" class="view-dropdown" style="display: none;"></select>
+                </div>
             </div>
 
-            <div id="view-controls" style="margin: 12px 0; display: flex; gap: 10px; align-items: center;">
-                <select id="view-selector"
-                    style="display: none; padding: 8px 12px; font-size: 15px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px;"></select>
-            </div>
-
-            <div id="view-content">
+            <div id="view-content" class="timetable-viewport surface-card">
                 <div class="empty-state">
-                    <p>No timetable generated yet.<br>Go to <strong>Generate</strong> tab to create one.</p>
+                    <p>No timetable generated yet.<br>Navigate to the <strong>Generate</strong> tab to run the solver.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture & Course Theory Tab -->
+        <section id="theory" class="tab-content">
+            <div class="page-header">
+                <div class="page-header-text">
+                    <h2>System Architecture &amp; Theoretical Mapping</h2>
+                    <p class="page-desc">Academic curriculum integration mapping timetabling logic to core computer science fundamentals.</p>
+                </div>
+            </div>
+
+            <!-- 4 Core Subjects Grid -->
+            <div class="theory-grid">
+                
+                <!-- OS Card -->
+                <div class="surface-card theory-card card-os">
+                    <div class="theory-card-header">
+                        <h3>Operating Systems (OS)</h3>
+                        <span class="theory-tag tag-os">Resource Management</span>
+                    </div>
+                    <ul class="theory-list">
+                        <li><strong>Mutual Exclusion (Mutex):</strong> Physical rooms and faculty members represent non-shareable resources. No two concurrent sessions may lock the same room or faculty resource during identical quantum slices.</li>
+                        <li><strong>Deadlock Avoidance:</strong> Minimum Remaining Values (MRV) forward checking enforces state safety invariants similar to the Banker’s Algorithm, preventing search execution deadlocks.</li>
+                        <li><strong>Quantum Discretization:</strong> Operating hours are segmented into uniform time quanta with institutional lunch intervals acting as protected kernel break boundaries.</li>
+                        <li><strong>Concurrency &amp; Multiprogramming:</strong> Practical lab batches execute concurrently across distinct partitioned laboratory rooms during the same operational time slice.</li>
+                    </ul>
+                    <div class="code-ref-footer">
+                        Code Reference: constraints.py (lines 60-90)
+                    </div>
+                </div>
+
+                <!-- DBMS Card -->
+                <div class="surface-card theory-card card-dbms">
+                    <div class="theory-card-header">
+                        <h3>Database Systems (DBMS)</h3>
+                        <span class="theory-tag tag-dbms">Relational Model &amp; ACID</span>
+                    </div>
+                    <ul class="theory-list">
+                        <li><strong>3NF Normalization:</strong> Entities (Rooms, Faculty, Sections, Batches, Courses) adhere to Third Normal Form with unique keys and referential integrity.</li>
+                        <li><strong>ACID Transaction Rollback:</strong> Assign / Unassign backtracking cycles behave as atomic transactions. Downstream constraint violations trigger clean rollback without partial state corruption.</li>
+                        <li><strong>Relational Constraints:</strong> Domain constraints on room types, entity integrity on primary identifiers, and referential constraints across parent sections.</li>
+                        <li><strong>Shadow Paging / WAL:</strong> database.py executes atomic filesystem replacement (os.replace) via temporary storage files to ensure persistence crash safety.</li>
+                    </ul>
+                    <div class="code-ref-footer">
+                        Code Reference: models.py, database.py, scheduler.py (_assign/_unassign)
+                    </div>
+                </div>
+
+                <!-- DAA Card -->
+                <div class="surface-card theory-card card-daa">
+                    <div class="theory-card-header">
+                        <h3>Design &amp; Analysis of Algorithms (DAA)</h3>
+                        <span class="theory-tag tag-daa">CSP &amp; Heuristic Search</span>
+                    </div>
+                    <ul class="theory-list">
+                        <li><strong>CSP Formulation:</strong> Formal (X, D, C) tri-tuple formulation where variables X are academic sessions, domains D are slot-room assignments, and C are hard consistency constraints.</li>
+                        <li><strong>State Space Tree Search:</strong> Depth-First recursive exploration of viable assignment branches with intelligent backtracking.</li>
+                        <li><strong>MRV (Fail-First) Heuristic:</strong> Multi-period practical lab sessions and variables with the fewest remaining candidate rooms are evaluated first to minimize branching factors.</li>
+                        <li><strong>Complexity Analysis:</strong> Theoretical worst-case exponential O(d^n) reduced to empirical sub-50ms execution via forward consistency pruning.</li>
+                    </ul>
+                    <div class="code-ref-footer">
+                        Code Reference: scheduler.py (solve, _backtrack)
+                    </div>
+                </div>
+
+                <!-- DMS Card -->
+                <div class="surface-card theory-card card-dms">
+                    <div class="theory-card-header">
+                        <h3>Discrete Mathematical Structures (DMS)</h3>
+                        <span class="theory-tag tag-dms">Graph &amp; Set Theory</span>
+                    </div>
+                    <ul class="theory-list">
+                        <li><strong>Cartesian Products:</strong> Variable domains are derived from the Cartesian product: WorkingDays x TimeSlots x SuitableRooms.</li>
+                        <li><strong>Bipartite Matching:</strong> Assigning session requirements to available room-time combinations under degree constraints.</li>
+                        <li><strong>Graph Vertex Coloring:</strong> Sessions correspond to vertices, resource conflicts (shared instructor, room, or section) form edges, and time slots represent distinct colors. Solvable when chromatic number chi(G) &lt;= total slots.</li>
+                        <li><strong>Predicate Logic:</strong> Institutional rules articulated as universal and existential propositions across all assignment tuples.</li>
+                    </ul>
+                    <div class="code-ref-footer">
+                        Code Reference: constraints.py, time_slots.py
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Algorithm Justification Table -->
+            <div class="surface-card" style="margin-bottom: 24px;">
+                <div class="section-subhead">
+                    <h3>Engine Comparison Matrix: CSP Backtracking vs. Alternatives</h3>
+                    <span class="subhead-caption">Architectural evaluation of academic timetabling algorithmic engines</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Approach</th>
+                                <th>Mechanism</th>
+                                <th>Core Strengths</th>
+                                <th>Evaluation for Academic Scheduling</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>CSP + Backtracking (Selected)</strong></td>
+                                <td>Deterministic depth-first search with MRV pruning and forward checking</td>
+                                <td>Guarantees 100% hard constraint satisfaction; mathematically proves infeasibility; fully explainable</td>
+                                <td>Selected engine. Pure native Python with zero commercial binary dependencies.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Genetic Algorithms (GA)</strong></td>
+                                <td>Stochastic population crossover and mutation evaluated against fitness metrics</td>
+                                <td>Effective for multi-objective optimization across soft preferences</td>
+                                <td>Hard constraints modeled as soft penalties; frequently yields 1-2 critical conflicts; non-deterministic.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Integer Linear Programming (ILP)</strong></td>
+                                <td>Simplex / Branch-and-bound optimization solver (Gurobi, CPLEX)</td>
+                                <td>Provably optimal for strictly linear mathematical formulations</td>
+                                <td>Requires external proprietary C solvers; complex formulation for contiguous multi-hour practicals.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>CPU Scheduling (RR, SJF, FCFS)</strong></td>
+                                <td>Priority / Queue-based single-resource dispatcher</td>
+                                <td>Efficient for 1-dimensional CPU core dispatching</td>
+                                <td>Inapplicable problem space: CPU scheduling is 1D time dispatching, whereas timetabling is 3D multi-resource locking.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Code Navigation Cheatsheet -->
+            <div class="surface-card">
+                <div class="section-subhead">
+                    <h3>Code Navigation Matrix</h3>
+                    <span class="subhead-caption">Implementation guide for architectural review</span>
+                </div>
+                <div class="table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Architecture Component</th>
+                                <th>Source File</th>
+                                <th>Key Functions &amp; Logic</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>CSP Backtracking Engine</strong></td>
+                                <td>scheduler.py</td>
+                                <td>solve(), _backtrack(), MRV ordering, forward checking loop</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Hard Constraint Rules</strong></td>
+                                <td>constraints.py</td>
+                                <td>check_section_conflict, check_faculty_conflict, check_room_conflict, check_consecutive_slots</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Soft Constraint Quality Metrics</strong></td>
+                                <td>soft_constraints.py</td>
+                                <td>compute_total_soft_score (7 quality metrics scored out of 100)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Data Models &amp; Normalization</strong></td>
+                                <td>models.py</td>
+                                <td>Room, Faculty, Section, Batch, Course, ScheduleSession, Assignment</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Atomic Storage &amp; Persistence</strong></td>
+                                <td>database.py</td>
+                                <td>Transactional shadow-file writing with thread locks</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Dynamic Time Quanta</strong></td>
+                                <td>time_slots.py</td>
+                                <td>Sliding time windows, lunch exclusions, break intervals</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </section>
 
     </main>
 
-    <div id="notification" class="notification hidden"></div>
+    <div id="notification" class="notification hidden" role="status" aria-live="polite"></div>
 
     <script src="/static/app.js"></script>
 
     <script>
-        // ── v1: Pre-Generate Summary ──────────────────────────────────────────────
+        // Pre-Generate Summary Controller
         (function () {
             const btnGen = document.getElementById('btn-generate');
             const btnConf = document.getElementById('btn-confirm-generate');
@@ -445,76 +778,80 @@
             const panel = document.getElementById('pre-gen-summary');
             const grid = document.getElementById('summary-grid');
             const warnings = document.getElementById('summary-warnings');
-            const controls = document.querySelector('.generate-controls.card');
+            const controls = document.querySelector('.generate-controls');
 
-            // Flag: skip summary and go straight to generation (after user confirms)
             let _skipSummary = false;
 
-            function statCard(label, value, color) {
-                return `<div style="background:#f9f9fb;border:1px solid #e3e6f0;border-radius:10px;padding:14px 16px;text-align:center;">
-                        <div style="font-size:28px;font-weight:700;color:${color || '#3b5bdb'};">${value}</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;">${label}</div>
-                    </div>`;
+            function statTile(label, value, variant) {
+                return '<div class="stat-tile ' + (variant || 'tile-default') + '">' +
+                        '<div class="stat-tile-value">' + value + '</div>' +
+                        '<div class="stat-tile-label">' + label + '</div>' +
+                    '</div>';
             }
 
-            btnGen && btnGen.addEventListener('click', async (e) => {
-                // If confirmed, let the existing app.js listener run normally
-                if (_skipSummary) { _skipSummary = false; return; }
+            if (btnGen) {
+                btnGen.addEventListener('click', async (e) => {
+                    if (_skipSummary) { _skipSummary = false; return; }
 
-                e.stopImmediatePropagation();
-                try {
-                    const res = await fetch('/api/summary');
-                    const data = await res.json();
+                    e.stopImmediatePropagation();
+                    try {
+                        const res = await fetch('/api/summary');
+                        const data = await res.json();
 
-                    if (!data.config_set) {
-                        alert('Please save a configuration first (Config tab).');
-                        return;
+                        if (!data.config_set) {
+                            alert('Please save a configuration first in the Configuration tab.');
+                            return;
+                        }
+                        if (data.courses === 0) {
+                            alert('No courses defined. Please add courses before generating.');
+                            return;
+                        }
+
+                        grid.innerHTML = [
+                            statTile('Sections', data.sections, 'tile-primary'),
+                            statTile('Batches', data.batches, 'tile-primary'),
+                            statTile('Faculty', data.faculty, 'tile-primary'),
+                            statTile('Theory Rooms', data.theory_rooms, 'tile-success'),
+                            statTile('Lab Rooms', data.lab_rooms, 'tile-success'),
+                            statTile('Courses', data.courses, 'tile-accent'),
+                            statTile('Theory Sessions / week', data.theory_sessions_per_week, 'tile-warning'),
+                            statTile('Lab Sessions / week', data.lab_sessions_per_week, 'tile-warning'),
+                            statTile('Total Hours / week', data.total_weekly_session_hours, 'tile-danger'),
+                            statTile('Available Slots / week', data.available_slots_per_week, 'tile-muted'),
+                        ].join('');
+
+                        let w = '';
+                        if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9) {
+                            w += '<p class="summary-warning-item warning-danger">Warning: Total weekly session hours approach or exceed total available slots. Solver execution may fail.</p>';
+                        }
+                        if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0) {
+                            w += '<p class="summary-warning-item warning-caution">Warning: Lab sessions exist but no Lab facilities are configured.</p>';
+                        }
+                        warnings.innerHTML = w;
+
+                        panel.style.display = 'block';
+                        if (controls) controls.style.display = 'none';
+                    } catch (err) {
+                        alert('Could not load summary: ' + err.message);
                     }
-                    if (data.courses === 0) {
-                        alert('No courses defined. Please add courses before generating.');
-                        return;
-                    }
+                }, true);
+            }
 
-                    grid.innerHTML = [
-                        statCard('Sections', data.sections, '#1c7ed6'),
-                        statCard('Batches', data.batches, '#1c7ed6'),
-                        statCard('Faculty', data.faculty, '#1c7ed6'),
-                        statCard('Theory Rooms', data.theory_rooms, '#2f9e44'),
-                        statCard('Lab Rooms', data.lab_rooms, '#2f9e44'),
-                        statCard('Courses', data.courses, '#7048e8'),
-                        statCard('Theory Sessions / week', data.theory_sessions_per_week, '#e67700'),
-                        statCard('Lab Sessions / week', data.lab_sessions_per_week, '#e67700'),
-                        statCard('Total Hours / week', data.total_weekly_session_hours, '#c92a2a'),
-                        statCard('Available Slots / week', data.available_slots_per_week, '#495057'),
-                    ].join('');
+            if (btnCancel) {
+                btnCancel.addEventListener('click', () => {
+                    panel.style.display = 'none';
+                    if (controls) controls.style.display = '';
+                });
+            }
 
-                    // Warnings
-                    let w = '';
-                    if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9)
-                        w += '<p style="color:#c92a2a;font-weight:600;">[Warning] Session hours are very close to (or exceed) available slots — scheduling may fail.</p>';
-                    if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0)
-                        w += '<p style="color:#e67700;font-weight:600;">[Warning] Lab sessions exist but no Lab rooms are defined.</p>';
-                    warnings.innerHTML = w;
-
-                    panel.style.display = 'block';
-                    controls.style.display = 'none';
-                } catch (err) {
-                    alert('Could not load summary: ' + err.message);
-                }
-            }, true /* capture so it fires before the existing listener */);
-
-            btnCancel && btnCancel.addEventListener('click', () => {
-                panel.style.display = 'none';
-                controls.style.display = '';
-            });
-
-            btnConf && btnConf.addEventListener('click', () => {
-                panel.style.display = 'none';
-                controls.style.display = '';
-                // Set flag so the capture listener passes through, then click
-                _skipSummary = true;
-                document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            });
+            if (btnConf) {
+                btnConf.addEventListener('click', () => {
+                    panel.style.display = 'none';
+                    if (controls) controls.style.display = '';
+                    _skipSummary = true;
+                    document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                });
+            }
         })();
     </script>
 

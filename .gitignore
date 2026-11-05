@@ -26,3 +26,6 @@ scheduler_trace.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Hallmark
+.hallmark/
