@@ -12,7 +12,7 @@ All data is stored in-memory (no database required for the MVP).
 
 from flask import Flask, jsonify, request, render_template
 import os
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
@@ -336,13 +336,13 @@ def manage_courses_id(id):
                 id=data['id'],
                 name=data['name'],
                 code=data['code'],
-                                section_id=data['section_id'],
+                section_id=data['section_id'],
                 l=float(data.get('l', 0)),
                 t=float(data.get('t', 0)),
                 p=float(data.get('p', 0)),
                 faculty_ids=data.get('faculty_ids', []),
                 assistant_faculty_ids=data.get('assistant_faculty_ids', []),
-                room_type=data['room_type'],
+                room_type=data.get('room_type', RoomType.THEORY_ROOM),
                 required_room_id=data.get('required_room_id') or None,
                 lab_batches=data.get('lab_batches', []),
             )
