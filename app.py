@@ -63,6 +63,12 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/portal')
+def portal():
+    """Serve the public/student timetable portal."""
+    return render_template('portal.html')
+
+
 # ---------------------------------------------------------------------------
 # Configuration API
 # ---------------------------------------------------------------------------

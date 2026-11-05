@@ -511,5 +511,19 @@ class TestTimetableScheduler(unittest.TestCase):
         self.assertEqual(add_res.get_json()['status'], 'ok')
         self.assertEqual(add_res.get_json()['department']['code'], 'MECH')
 
+    def test_20_public_portal_route(self):
+        """Verify public portal renders clean HTML without administration controls and zero emojis."""
+        res = self.client.get('/portal')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b'Campus Timetable Portal', res.data)
+        self.assertIn(b'Export Excel', res.data)
+
+        # Check for zero emojis
+        for ch in res.data.decode('utf-8'):
+            cp = ord(ch)
+            is_emoji = ((0x1F300 <= cp <= 0x1FAFF) or (0x2600 <= cp <= 0x27BF) or
+                        (0x2300 <= cp <= 0x23FF) or (cp in [0x2B50, 0x200D, 0xFE0F, 0xFE0E]))
+            self.assertFalse(is_emoji, f"Found emoji {ch} in portal HTML")
+
 if __name__ == '__main__':
     unittest.main()
