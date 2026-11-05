@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoSchedule — Academic Timetable System</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <div class="header-inner">
+            <div class="header-logo">
+                <div class="logo-icon">⬡</div>
+                <div class="header-text">
+                    <h1>AutoSchedule</h1>
+                    <span class="header-subtitle">Academic Timetable Scheduling System</span>
+                </div>
+            </div>
+            <div class="header-badge">
+                <span class="badge-dot"></span>
+                CSP Engine · Backtracking Algorithm
+            </div>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab-btn active" data-target="config">
+            <span class="tab-icon">⚙</span> Configuration
+        </button>
+        <button class="tab-btn" data-target="rooms">
+            <span class="tab-icon">🏫</span> Rooms
+        </button>
+        <button class="tab-btn" data-target="faculty">
+            <span class="tab-icon">👨‍🏫</span> Faculty
+        </button>
+        <button class="tab-btn" data-target="sections">
+            <span class="tab-icon">🎓</span> Sections
+        </button>
+        <button class="tab-btn" data-target="courses">
+            <span class="tab-icon">📚</span> Courses
+        </button>
+        <button class="tab-btn" data-target="generate">
+            <span class="tab-icon">⚡</span> Generate
+        </button>
+        <button class="tab-btn" data-target="views">
+            <span class="tab-icon">📅</span> Timetable Views
+        </button>
+    </nav>
+
+    <main id="content">
+
+        <!-- Configuration Tab -->
+        <section id="config" class="tab-content active">
+            <div class="page-header">
+                <div>
+                    <h2>System Configuration</h2>
+                    <p class="page-desc">Set working hours, breaks, and time slot duration before adding data.</p>
+                </div>
+                <div class="actions">
+                    <button id="btn-load-demo" class="btn success">
+                        ✦ Load Demo Data
+                    </button>
+                    <button id="btn-clear-data" class="btn danger">
+                        ✕ Clear All Data
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <form id="form-config">
+                    <div class="form-group">
+                        <label>Working Days</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Monday"> Monday</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Tuesday"> Tuesday</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Wednesday"> Wednesday</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Thursday"> Thursday</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Friday"> Friday</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Saturday"> Saturday</label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="start_time">Start Time</label>
+                            <input type="time" id="start_time" name="start_time" value="09:00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="end_time">End Time</label>
+                            <input type="time" id="end_time" name="end_time" value="17:00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="slot_duration_minutes">Slot Duration (min)</label>
+                            <input type="number" id="slot_duration_minutes" name="slot_duration_minutes" value="60" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="lunch_start">Lunch Start</label>
+                            <input type="time" id="lunch_start" name="lunch_start" value="13:00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="lunch_end">Lunch End</label>
+                            <input type="time" id="lunch_end" name="lunch_end" value="14:00" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Extra Breaks</label>
+                        <div id="breaks-container"></div>
+                        <button type="button" id="btn-add-break" class="btn btn-sm">+ Add Break</button>
+                    </div>
+
+                    <button type="submit" class="btn primary" style="margin-top: 8px;">Save Configuration</button>
+                </form>
+            </div>
+
+            <div class="card" id="time-slots-display">
+                <h3>Generated Time Slots</h3>
+                <ul id="time-slots-list" class="slot-list"></ul>
+            </div>
+        </section>
+
+        <!-- Rooms Tab -->
+        <section id="rooms" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Rooms</h2>
+                    <p class="page-desc">Add theory classrooms and lab rooms with their capacities.</p>
+                </div>
+            </div>
+            <div class="card">
+                <h3 class="form-title">Add New Room</h3>
+                <form id="form-room" class="add-form">
+                    <input type="text" id="room_id" placeholder="Room ID (e.g. R101)" required>
+                    <input type="text" id="room_name" placeholder="Display Name" required>
+                    <select id="room_type" required>
+                        <option value="THEORY_ROOM">Theory Room</option>
+                        <option value="LAB">Lab</option>
+                    </select>
+                    <input type="number" id="room_capacity" placeholder="Capacity (optional)">
+                    <input type="text" id="room_category" placeholder="Category (optional)">
+                    <button type="submit" class="btn primary">Add Room</button>
+                </form>
+            </div>
+            <div class="card">
+                <table id="table-rooms">
+                    <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Capacity</th><th>Category</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Faculty Tab -->
+        <section id="faculty" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Faculty</h2>
+                    <p class="page-desc">Register faculty members who will be assigned to courses.</p>
+                </div>
+            </div>
+            <div class="card">
+                <h3 class="form-title">Add New Faculty</h3>
+                <form id="form-faculty" class="add-form">
+                    <input type="text" id="faculty_id" placeholder="Faculty ID (e.g. F1)" required>
+                    <input type="text" id="faculty_name" placeholder="Full Name" required>
+                    <button type="submit" class="btn primary">Add Faculty</button>
+                </form>
+            </div>
+            <div class="card">
+                <table id="table-faculty">
+                    <thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sections Tab -->
+        <section id="sections" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Sections &amp; Batches</h2>
+                    <p class="page-desc">Define class sections and their lab batches.</p>
+                </div>
+            </div>
+            <div class="card">
+                <h3 class="form-title">Add Section</h3>
+                <form id="form-section" class="add-form">
+                    <input type="text" id="section_id" placeholder="Section ID (e.g. 3A)" required>
+                    <input type="text" id="section_name" placeholder="Name" required>
+                    <input type="number" id="section_semester" placeholder="Semester" required>
+                    <input type="text" id="section_division" placeholder="Division" required>
+                    <input type="number" id="section_strength" placeholder="Strength (optional)">
+                    <button type="submit" class="btn primary">Add Section</button>
+                </form>
+            </div>
+            <div class="card">
+                <table id="table-sections">
+                    <thead><tr><th>ID</th><th>Name</th><th>Semester</th><th>Division</th><th>Strength</th><th>Batches</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="card">
+                <h3 class="form-title">Add Lab Batch</h3>
+                <form id="form-batch" class="add-form">
+                    <input type="text" id="batch_id" placeholder="Batch ID (e.g. A1)" required>
+                    <input type="text" id="batch_name" placeholder="Batch Name" required>
+                    <select id="batch_section" required><option value="">Select Section</option></select>
+                    <input type="number" id="batch_strength" placeholder="Batch Strength" required>
+                    <button type="submit" class="btn primary">Add Batch</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Courses Tab -->
+        <section id="courses" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Courses</h2>
+                    <p class="page-desc">Define courses with L-T-P credits, faculty, and room requirements.</p>
+                </div>
+            </div>
+            <div class="card">
+                <h3 class="form-title">Add Course</h3>
+                <form id="form-course" class="add-form complex-form">
+                    <input type="text" id="course_id" placeholder="Course ID (e.g. CS301_3A)" required>
+                    <input type="text" id="course_name" placeholder="Course Name" required>
+                    <input type="text" id="course_code" placeholder="Course Code" required>
+                    <select id="course_section" required><option value="">Select Section</option></select>
+
+                    <div class="ltp-inputs">
+                        <input type="number" step="0.5" id="course_l" placeholder="L (Lectures)" value="0" min="0" required>
+                        <input type="number" step="0.5" id="course_t" placeholder="T (Tutorials)" value="0" min="0" required>
+                        <input type="number" step="0.5" id="course_p" placeholder="P (Practicals)" value="0" min="0" required>
+                    </div>
+
+                    <div class="faculty-selects">
+                        <div>
+                            <label style="font-size:12px;font-weight:600;color:#555;">Main Faculty (Ctrl+click for multiple)</label>
+                            <select id="course_faculty" multiple required style="height: 90px; width:100%;"></select>
+                        </div>
+                        <div>
+                            <label style="font-size:12px;font-weight:600;color:#555;">Assistant Faculty (Optional)</label>
+                            <select id="course_assistant_faculty" multiple style="height: 90px; width:100%;"></select>
+                        </div>
+                    </div>
+
+                    <select id="course_room_type" required>
+                        <option value="THEORY_ROOM">Theory Room</option>
+                        <option value="LAB">Lab</option>
+                    </select>
+                    <select id="course_required_room"><option value="">Required Room (Optional)</option></select>
+
+                    <select id="course_lab_batches" multiple style="display: none; height: 90px;" title="Hold Ctrl/Cmd to select multiple">
+                    </select>
+
+                    <button type="submit" class="btn primary">Add Course</button>
+                </form>
+            </div>
+            <div class="card">
+                <table id="table-courses">
+                    <thead><tr><th>ID</th><th>Code</th><th>Name</th><th>Section</th><th>L-T-P</th><th>Batches</th><th>Faculty</th><th>Asst Faculty</th><th>Room Type</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Generate Tab -->
+        <section id="generate" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Generate Timetable</h2>
+                    <p class="page-desc">Run the CSP backtracking solver to produce a conflict-free timetable.</p>
+                </div>
+            </div>
+
+            <div class="algo-info card">
+                <div class="algo-info-grid">
+                    <div class="algo-stat">
+                        <div class="algo-stat-value">6</div>
+                        <div class="algo-stat-label">Hard Constraints</div>
+                    </div>
+                    <div class="algo-stat">
+                        <div class="algo-stat-value">7</div>
+                        <div class="algo-stat-label">Soft Constraints</div>
+                    </div>
+                    <div class="algo-stat">
+                        <div class="algo-stat-value">MRV</div>
+                        <div class="algo-stat-label">Heuristic</div>
+                    </div>
+                    <div class="algo-stat">
+                        <div class="algo-stat-value">&lt;1s</div>
+                        <div class="algo-stat-label">Typical Runtime</div>
+                    </div>
+                </div>
+                <div class="algo-constraints">
+                    <span class="constraint-tag">✓ No section conflicts</span>
+                    <span class="constraint-tag">✓ No faculty clashes</span>
+                    <span class="constraint-tag">✓ No room double-booking</span>
+                    <span class="constraint-tag">✓ Room type suitability</span>
+                    <span class="constraint-tag">✓ Room capacity check</span>
+                    <span class="constraint-tag">✓ Lab consecutive slots</span>
+                </div>
+            </div>
+
+            
+        <!-- Pre-Generate Summary Panel (v1) -->
+        <div class="card" id="pre-gen-summary" style="display:none; margin-bottom:16px;">
+            <h3 style="margin-bottom:12px;">📊 Schedule Summary</h3>
+            <div id="summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;"></div>
+            <div id="summary-warnings" style="margin-bottom:12px;"></div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <button id="btn-confirm-generate" class="btn-generate" style="flex:1;min-width:200px;">
+                    <span class="btn-generate-icon">⚡</span> Confirm &amp; Generate
+                </button>
+                <button id="btn-cancel-generate" class="btn secondary" style="flex:0;">Cancel</button>
+            </div>
+        </div>
+
+        <div class="generate-controls card">
+                <button id="btn-generate" class="btn-generate">
+                    <span class="btn-generate-icon">⚡</span>
+                    Generate Timetable
+                </button>
+                <button id="btn-validate" class="btn secondary" style="margin-left: 12px;">
+                    ✓ Validate Configuration
+                </button>
+            </div>
+
+            <div id="generate-status" style="margin-top: 20px; display: none;">
+                <div class="status-card" id="gen-status-card">
+                    <h3 id="gen-status-text"></h3>
+                    <div id="gen-score" style="display: none;"></div>
+                    <div id="gen-diagnostics" style="display: none; color: #c62828; margin-top: 10px;"></div>
+                </div>
+            </div>
+
+            <div id="validation-report" style="display: none; margin-top: 20px;">
+                <div class="card">
+                    <h3>Validation Report</h3>
+                    <div id="val-content"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Timetable Views Tab -->
+        <section id="views" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Timetable Views</h2>
+                    <p class="page-desc">Browse the generated schedule by section, faculty, or room.</p>
+                </div>
+                <button id="btn-print" class="btn primary" style="display: none;" onclick="window.print()">
+                    🖨 Print Timetable
+                </button>
+            </div>
+
+            <div class="view-tabs">
+                <button class="view-btn active" data-view="master">Master View</button>
+                <button class="view-btn" data-view="section">By Section</button>
+                <button class="view-btn" data-view="faculty">By Faculty</button>
+                <button class="view-btn" data-view="room">By Room</button>
+            </div>
+
+            <div id="view-controls" style="margin: 12px 0; display: flex; gap: 10px; align-items: center;">
+                <select id="view-selector" style="display: none; padding: 8px 12px; font-size: 15px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px;"></select>
+            </div>
+
+            <div id="view-content">
+                <div class="empty-state">
+                    <div class="empty-icon">📅</div>
+                    <p>No timetable generated yet.<br>Go to <strong>Generate</strong> tab to create one.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="notification" class="notification hidden"></div>
+
+    <script src="/static/app.js"></script>
+
+    <script>
+    // ── v1: Pre-Generate Summary ──────────────────────────────────────────────
+    (function () {
+        const btnGen    = document.getElementById('btn-generate');
+        const btnConf   = document.getElementById('btn-confirm-generate');
+        const btnCancel = document.getElementById('btn-cancel-generate');
+        const panel     = document.getElementById('pre-gen-summary');
+        const grid      = document.getElementById('summary-grid');
+        const warnings  = document.getElementById('summary-warnings');
+        const controls  = document.querySelector('.generate-controls.card');
+
+        // Flag: skip summary and go straight to generation (after user confirms)
+        let _skipSummary = false;
+
+        function statCard(label, value, color) {
+            return `<div style="background:#f9f9fb;border:1px solid #e3e6f0;border-radius:10px;padding:14px 16px;text-align:center;">
+                        <div style="font-size:28px;font-weight:700;color:${color || '#3b5bdb'};">${value}</div>
+                        <div style="font-size:12px;color:#666;margin-top:4px;">${label}</div>
+                    </div>`;
+        }
+
+        btnGen && btnGen.addEventListener('click', async (e) => {
+            // If confirmed, let the existing app.js listener run normally
+            if (_skipSummary) { _skipSummary = false; return; }
+
+            e.stopImmediatePropagation();
+            try {
+                const res  = await fetch('/api/summary');
+                const data = await res.json();
+
+                if (!data.config_set) {
+                    alert('Please save a configuration first (Config tab).');
+                    return;
+                }
+                if (data.courses === 0) {
+                    alert('No courses defined. Please add courses before generating.');
+                    return;
+                }
+
+                grid.innerHTML = [
+                    statCard('Sections', data.sections, '#1c7ed6'),
+                    statCard('Batches', data.batches, '#1c7ed6'),
+                    statCard('Faculty', data.faculty, '#1c7ed6'),
+                    statCard('Theory Rooms', data.theory_rooms, '#2f9e44'),
+                    statCard('Lab Rooms', data.lab_rooms, '#2f9e44'),
+                    statCard('Courses', data.courses, '#7048e8'),
+                    statCard('Theory Sessions / week', data.theory_sessions_per_week, '#e67700'),
+                    statCard('Lab Sessions / week', data.lab_sessions_per_week, '#e67700'),
+                    statCard('Total Hours / week', data.total_weekly_session_hours, '#c92a2a'),
+                    statCard('Available Slots / week', data.available_slots_per_week, '#495057'),
+                ].join('');
+
+                // Warnings
+                let w = '';
+                if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9)
+                    w += '<p style="color:#c92a2a;font-weight:600;">⚠️ Session hours are very close to (or exceed) available slots — scheduling may fail.</p>';
+                if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0)
+                    w += '<p style="color:#e67700;font-weight:600;">⚠️ Lab sessions exist but no Lab rooms are defined.</p>';
+                warnings.innerHTML = w;
+
+                panel.style.display   = 'block';
+                controls.style.display = 'none';
+            } catch (err) {
+                alert('Could not load summary: ' + err.message);
+            }
+        }, true /* capture so it fires before the existing listener */);
+
+        btnCancel && btnCancel.addEventListener('click', () => {
+            panel.style.display    = 'none';
+            controls.style.display = '';
+        });
+
+        btnConf && btnConf.addEventListener('click', () => {
+            panel.style.display    = 'none';
+            controls.style.display = '';
+            // Set flag so the capture listener passes through, then click
+            _skipSummary = true;
+            document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+    })();
+    </script>
+
+</body>
+</html>
