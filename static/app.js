@@ -479,7 +479,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
     // Show loading state
     btn.disabled = true;
-    btn.innerHTML = '<span class="btn-generate-icon" style="animation: spin 1s linear infinite; display:inline-block;">⏳</span> Generating...';
+    btn.innerHTML = 'Generating...';
     statusDiv.style.display = 'block';
     statusCard.className = 'status-card';
     statusText.textContent = 'Running CSP solver... please wait';
@@ -495,7 +495,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
             const stats = bestVariant.stats || {};
 
             statusCard.className = 'status-card success-card';
-            statusText.innerHTML = `✅ &nbsp;Timetable generated successfully!`;
+            statusText.innerHTML = `Timetable generated successfully!`;
             statusText.style.color = 'var(--success)';
             scoreDiv.style.display = 'block';
 
@@ -516,23 +516,23 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
             // After 1.5s, prompt user to go to Views tab
             setTimeout(() => {
-                showNotification('Timetable ready! Switch to Timetable Views tab 📅', 'success');
+                showNotification('Timetable ready! Switch to Timetable Views tab', 'success');
             }, 600);
 
         } else {
             statusCard.className = 'status-card error-card';
-            statusText.innerHTML = `❌ &nbsp;Generation Failed — ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
+            statusText.innerHTML = `Generation Failed — ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
             statusText.style.color = 'var(--danger)';
             diagDiv.style.display = 'block';
             diagDiv.innerHTML = `<strong>Error:</strong> ${res.message || 'Infeasible problem'}<br><pre style="font-size:12px;margin-top:8px;white-space:pre-wrap;">${res.diagnostics || ''}</pre>`;
         }
     } catch (e) {
         statusCard.className = 'status-card error-card';
-        statusText.innerHTML = `❌ &nbsp;Error: ${e.message}`;
+        statusText.innerHTML = `Error: ${e.message}`;
         statusText.style.color = 'var(--danger)';
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<span class="btn-generate-icon">⚡</span> Generate Timetable';
+        btn.innerHTML = 'Generate Timetable';
     }
 });
 
@@ -841,31 +841,9 @@ document.querySelectorAll('.view-btn').forEach(btn => {
                 selector.onchange = (ev) => renderRoomView(ev.target.value);
             }
             
-            document.getElementById('view-content').innerHTML = '<div class="empty-state"><div class="empty-icon">👆</div><p>Select from the dropdown above to view the timetable.</p></div>';
+            document.getElementById('view-content').innerHTML = '<div class="empty-state"><p>Select from the dropdown above to view the timetable.</p></div>';
         }
     });
-});
-
-
-// Excel import listeners removed in v1
-
-const data = await res.json();
-        if (!res.ok) {
-            showNotification(data.error || 'Import failed', 'error');
-        } else {
-            showNotification('Dataset imported successfully!');
-            document.getElementById('import-preview').style.display = 'none';
-            btn.style.display = 'none';
-            await loadRooms();
-            await loadFaculty();
-            await loadSections();
-            await loadCourses();
-        }
-        btn.textContent = 'Import Dataset';
-        btn.disabled = false;
-    } catch (e) {
-        showNotification('Import failed.', 'error');
-    }
 });
 
 
@@ -962,29 +940,36 @@ let totalVariants = 0;
 
 async function loadVariantMetadata() {
     try {
+        const nav = document.getElementById('variant-navigator');
+        if (!nav) return;
         const res = await fetch('/api/timetable/metadata');
         if (!res.ok) {
-            document.getElementById('variant-navigator').style.display = 'none';
+            nav.style.display = 'none';
             return;
         }
         const data = await res.json();
         
         if (data.num_variants > 1) {
-            document.getElementById('variant-navigator').style.display = 'flex';
+            nav.style.display = 'flex';
             currentVariantIndex = data.active_variant_index;
             totalVariants = data.num_variants;
             
-            document.getElementById('var-current').textContent = currentVariantIndex + 1;
-            document.getElementById('var-total').textContent = totalVariants;
-            document.getElementById('var-score').textContent = data.active_score.total_score || 0;
-            
-            document.getElementById('btn-var-prev').disabled = currentVariantIndex === 0;
-            document.getElementById('btn-var-next').disabled = currentVariantIndex === totalVariants - 1;
+            const curEl = document.getElementById('var-current');
+            const totEl = document.getElementById('var-total');
+            const scoreEl = document.getElementById('var-score');
+            const prevBtn = document.getElementById('btn-var-prev');
+            const nextBtn = document.getElementById('btn-var-next');
+            if (curEl) curEl.textContent = currentVariantIndex + 1;
+            if (totEl) totEl.textContent = totalVariants;
+            if (scoreEl) scoreEl.textContent = data.active_score ? data.active_score.total_score : 0;
+            if (prevBtn) prevBtn.disabled = currentVariantIndex === 0;
+            if (nextBtn) nextBtn.disabled = currentVariantIndex === totalVariants - 1;
         } else {
-            document.getElementById('variant-navigator').style.display = 'none';
+            nav.style.display = 'none';
         }
     } catch (e) {
-        document.getElementById('variant-navigator').style.display = 'none';
+        const nav = document.getElementById('variant-navigator');
+        if (nav) nav.style.display = 'none';
     }
 }
 
@@ -1128,8 +1113,10 @@ async function loadTraceConfig() {
     try {
         const res = await fetchJSON('/api/debug/trace/config');
         if (res) {
-            document.getElementById('trace-level').value = res.level;
-            document.getElementById('trace-filter').value = res.session_filter ? res.session_filter.join(', ') : '';
+            const lvl = document.getElementById('trace-level');
+            const flt = document.getElementById('trace-filter');
+            if (lvl) lvl.value = res.level;
+            if (flt) flt.value = res.session_filter ? res.session_filter.join(', ') : '';
         }
     } catch (err) {
         console.error('Failed to load trace config:', err);
@@ -1137,8 +1124,11 @@ async function loadTraceConfig() {
 }
 
 async function saveTraceConfig() {
-    const level = parseInt(document.getElementById('trace-level').value, 10);
-    const filter = document.getElementById('trace-filter').value;
+    const lvl = document.getElementById('trace-level');
+    const flt = document.getElementById('trace-filter');
+    if (!lvl) return;
+    const level = parseInt(lvl.value, 10);
+    const filter = flt ? flt.value : '';
     
     try {
         await fetchJSON('/api/debug/trace/config', {
