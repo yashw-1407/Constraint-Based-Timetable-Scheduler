@@ -117,7 +117,8 @@ def init_db(app):
                     password_hash=u.password_hash,
                     salt=u.salt,
                     role=u.role,
-                    name=u.name
+                    name=u.name,
+                    faculty_id=getattr(u, 'faculty_id', None)
                 ))
 
         db.session.commit()
@@ -161,7 +162,8 @@ def load_data(app_data):
                     password_hash=u.password_hash,
                     salt=u.salt,
                     role=u.role,
-                    name=u.name
+                    name=u.name,
+                    faculty_id=getattr(u, 'faculty_id', None)
                 ) for u in db_users
             ] if db_users else get_default_users()
 
@@ -383,7 +385,7 @@ def save_data(app_data):
                 if not db_u:
                     db.session.add(DBUser(
                         id=u.id, username=u.username, password_hash=u.password_hash,
-                        salt=u.salt, role=u.role, name=u.name
+                        salt=u.salt, role=u.role, name=u.name, faculty_id=getattr(u, 'faculty_id', None)
                     ))
                 else:
                     db_u.username = u.username
@@ -391,6 +393,7 @@ def save_data(app_data):
                     db_u.salt = u.salt
                     db_u.role = u.role
                     db_u.name = u.name
+                    db_u.faculty_id = getattr(u, 'faculty_id', None)
 
             # 4. Working Config
             cfg = app_data.get('config')

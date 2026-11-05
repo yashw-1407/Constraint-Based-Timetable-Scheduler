@@ -13,15 +13,31 @@ Tests:
 10. Published faculty calendar public subscription access.
 """
 
+import os
+import shutil
+import tempfile
 import unittest
 from app import app, app_data
 from models import UserRole
-from database import save_data
+from database import save_data, load_data, init_db
 
 class TestMilestoneC(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         app.config['TESTING'] = True
+        cls.temp_dir = tempfile.mkdtemp(prefix='cbtts_test_c_')
+        cls.db_path = os.path.join(cls.temp_dir, 'test_c.db').replace('\\', '/')
+        cls.db_uri = f'sqlite:///{cls.db_path}'
+        app.config['SQLALCHEMY_DATABASE_URI'] = cls.db_uri
+        with app.app_context():
+            init_db(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     def setUp(self):
         self.client = app.test_client()
@@ -148,22 +164,35 @@ class TestMilestoneC(unittest.TestCase):
         self.assertEqual(res.status_code, 404)
 
     def test_09_faculty_ical_unpublished_access_control(self):
-        """Verify unpublished faculty schedule rejects anonymous and student access."""
+        """Verify unpublished faculty schedule rejects anonymous, student, and other faculty access."""
         app_data['publishing'] = {'is_published': False, 'status': 'DRAFT'}
         save_data(app_data)
 
         faculty_id = app_data['faculty'][0].id
         anon_client = app.test_client()
 
-        # Anonymous access rejected
+        # 1. Anonymous access rejected (401)
         res_anon = anon_client.get(f'/api/faculty/{faculty_id}/calendar.ics')
         self.assertEqual(res_anon.status_code, 401)
 
-        # Student access rejected
+        # 2. Student access rejected (403)
         with self.client.session_transaction() as sess:
             sess['user'] = {'id': 'user_student', 'username': 'student', 'role': UserRole.STUDENT}
         res_student = self.client.get(f'/api/faculty/{faculty_id}/calendar.ics')
         self.assertEqual(res_student.status_code, 403)
+
+        # 3. Another faculty member access rejected (403)
+        with self.client.session_transaction() as sess:
+            sess['user'] = {'id': 'user_other_fac', 'username': 'other_fac', 'role': UserRole.FACULTY, 'faculty_id': 'FAC_DIFFERENT_99'}
+        res_other = self.client.get(f'/api/faculty/{faculty_id}/calendar.ics')
+        self.assertEqual(res_other.status_code, 403)
+
+        # 4. Same faculty member allowed to access own unpublished calendar (200)
+        with self.client.session_transaction() as sess:
+            sess['user'] = {'id': 'user_same_fac', 'username': 'same_fac', 'role': UserRole.FACULTY, 'faculty_id': faculty_id}
+        res_own = self.client.get(f'/api/faculty/{faculty_id}/calendar.ics')
+        self.assertEqual(res_own.status_code, 200)
+        self.assertIn('BEGIN:VCALENDAR', res_own.get_data(as_text=True))
 
     def test_10_faculty_ical_published_public_access(self):
         """Verify published faculty schedule is accessible to anonymous subscribers."""
@@ -177,6 +206,50 @@ class TestMilestoneC(unittest.TestCase):
         res_anon = anon_client.get(f'/api/faculty/{faculty_id}/calendar.ics')
         self.assertEqual(res_anon.status_code, 200)
         self.assertIn('BEGIN:VCALENDAR', res_anon.get_data(as_text=True))
+
+    def test_11_test_database_is_isolated(self):
+        """Verify active test database configuration points to a temporary SQLite database."""
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        self.assertTrue('test_c.db' in db_uri or 'test_' in db_uri or 'sandbox' in db_uri)
+        self.assertFalse(db_uri.endswith('/autoschedule.db'))
+
+    def test_12_multi_candidate_selection_sync_and_persistence(self):
+        """Verify multi-candidate generation and variant selection synchronizes assignments and persists across restart."""
+        # Ensure demo data exists
+        if not app_data.get('courses'):
+            self.client.post('/api/load-demo', json={'scenario': 'standard'}, headers=self.csrf_header)
+
+        # Reset active result
+        app_data['result'] = None
+        app_data['engine'] = None
+
+        # Generate multiple variants without single generate
+        res_multi = self.client.post('/api/generate-multiple', json={'count': 2}, headers=self.csrf_header)
+        self.assertEqual(res_multi.status_code, 200)
+        data = res_multi.get_json()
+        self.assertIn('variants', data)
+        self.assertGreaterEqual(len(data['variants']), 2)
+
+        # Active variant 0 assignments must be synchronized
+        self.assertIsNotNone(app_data.get('result'))
+        self.assertIn('assignments_data', app_data['result'])
+        self.assertEqual(len(app_data['result']['assignments_data']), len(data['variants'][0]['assignments_data']))
+
+        # Select variant 1
+        res_sel = self.client.post('/api/timetable/variant/1', headers=self.csrf_header)
+        self.assertEqual(res_sel.status_code, 200)
+        self.assertEqual(app_data['result']['assignments_data'], data['variants'][1]['assignments_data'])
+
+        # Create snapshot using the selected variant
+        res_snap = self.client.post('/api/timetable/versions/snapshot', json={'note': 'Variant 1 Snapshot'}, headers=self.csrf_header)
+        self.assertEqual(res_snap.status_code, 200)
+
+        # Simulate restart and reload
+        reloaded_state = {'active_term_id': app_data.get('active_term_id', 'term_2026_fall')}
+        with app.app_context():
+            load_data(reloaded_state)
+        self.assertIsNotNone(reloaded_state.get('result'))
+        self.assertEqual(len(reloaded_state['result']['assignments_data']), len(data['variants'][1]['assignments_data']))
 
 if __name__ == '__main__':
     unittest.main()

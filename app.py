@@ -666,7 +666,8 @@ def login():
         'id': user.id,
         'username': user.username,
         'role': user.role,
-        'name': user.name
+        'name': user.name,
+        'faculty_id': getattr(user, 'faculty_id', None)
     }
     session['user'] = user_info
     session['csrf_token'] = csrf_token
@@ -917,6 +918,7 @@ def select_variant(index):
     result['active_variant_index'] = index
     result['assignments'] = engine._format_assignments()
     result['soft_score'] = variants[index].get('soft_score', {})
+    result['status'] = 'success'
     save_data(app_data)
     return jsonify({
         'status': 'ok',
@@ -1170,13 +1172,20 @@ def api_faculty_calendar_ics(faculty_id):
     is_published = pub.get('is_published', False)
     user = session.get('user')
 
-    if not is_published and not user:
-        return jsonify({'error': 'Timetable is unpublished. Authentication required.', 'code': 'UNAUTHORIZED'}), 401
+    if not is_published:
+        if not user:
+            return jsonify({'error': 'Timetable is unpublished. Authentication required.', 'code': 'UNAUTHORIZED'}), 401
 
-    if not is_published and user and user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
-        user_fac_id = user.get('faculty_id') or user.get('id')
-        if user.get('role') == UserRole.STUDENT or (user.get('role') == UserRole.FACULTY and user_fac_id != faculty_id):
-            return jsonify({'error': 'Access denied to unpublished faculty schedule', 'code': 'FORBIDDEN'}), 403
+        role = user.get('role')
+        if role not in (UserRole.ADMIN, UserRole.COORDINATOR):
+            user_fac_id = user.get('faculty_id') or user.get('id')
+            if role == UserRole.STUDENT:
+                return jsonify({'error': 'Students cannot access unpublished schedule calendar feeds', 'code': 'FORBIDDEN'}), 403
+            elif role == UserRole.FACULTY:
+                if user_fac_id != faculty_id and user.get('username') != faculty_id:
+                    return jsonify({'error': 'Faculty cannot access other faculty members unpublished calendars', 'code': 'FORBIDDEN'}), 403
+            else:
+                return jsonify({'error': 'Access denied to unpublished faculty schedule', 'code': 'FORBIDDEN'}), 403
 
     if not app_data.get('config') or not app_data.get('result'):
         return jsonify({'error': 'No timetable available'}), 400
@@ -1234,25 +1243,23 @@ def api_faculty_me_schedule():
     if role == UserRole.FACULTY:
         target_faculty_id = user.get('faculty_id')
         if not target_faculty_id:
-            username = user.get('username', '').lower()
-            user_name = user.get('name', '').lower()
+            username = (user.get('username') or '').strip().lower()
+            user_name = (user.get('name') or '').strip().lower()
             for f in app_data.get('faculty', []):
-                if f.id.lower() == username or f.name.lower() in user_name or user_name in f.name.lower():
+                if f.id.lower() == username or (user_name and (user_name == f.name.lower() or f.name.lower() in user_name)):
                     target_faculty_id = f.id
                     break
-            if not target_faculty_id and app_data.get('faculty'):
-                target_faculty_id = app_data['faculty'][0].id
     elif role in (UserRole.ADMIN, UserRole.COORDINATOR):
         target_faculty_id = request.args.get('faculty_id') or (app_data['faculty'][0].id if app_data.get('faculty') else None)
     else:
         return jsonify({'error': 'Access restricted to faculty and academic administrators', 'code': 'FORBIDDEN'}), 403
 
     if not target_faculty_id:
-        return jsonify({'error': 'No linked faculty identity found', 'code': 'NOT_FOUND'}), 404
+        return jsonify({'error': 'No linked faculty profile found for user account', 'code': 'FACULTY_NOT_LINKED'}), 404
 
     fac = next((f for f in app_data.get('faculty', []) if f.id == target_faculty_id), None)
     if not fac:
-        return jsonify({'error': 'Faculty member not found'}), 404
+        return jsonify({'error': f'Linked faculty profile {target_faculty_id} not found in database', 'code': 'FACULTY_NOT_FOUND'}), 404
 
     courses_taught = [c for c in app_data.get('courses', []) if target_faculty_id in c.faculty_ids or target_faculty_id in getattr(c, 'assistant_faculty_ids', [])]
     total_weekly_hours = sum(c.l + c.t + c.p for c in courses_taught)
@@ -1439,13 +1446,14 @@ def generate_multiple():
         # Convert variants -> alternatives mapping to maintain compatibility with existing variant code
         if 'alternatives' in result:
             result['variants'] = result['alternatives']
+        variants = result.get('variants', [])
+        if variants:
             result['active_variant_index'] = 0
-            if result['variants']:
-                engine.load_assignments_data(result['variants'][0]['assignments_data'])
-                result['assignments_data'] = result['variants'][0]['assignments_data']
-                result['assignments'] = engine._format_assignments()
-                result['soft_score'] = result['variants'][0]['soft_score']
-                result['status'] = 'success'
+            engine.load_assignments_data(variants[0]['assignments_data'])
+            result['assignments_data'] = variants[0]['assignments_data']
+            result['assignments'] = engine._format_assignments()
+            result['soft_score'] = variants[0].get('soft_score', {})
+            result['status'] = 'success'
             
         save_data(app_data)
         return jsonify(result)

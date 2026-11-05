@@ -14,15 +14,31 @@ Tests:
 """
 
 import json
+import os
+import shutil
+import tempfile
 import unittest
 from app import app, app_data
 from models import UserRole
-from database import save_data
+from database import save_data, init_db
 
 class TestMilestoneDE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         app.config['TESTING'] = True
+        cls.temp_dir = tempfile.mkdtemp(prefix='cbtts_test_de_')
+        cls.db_path = os.path.join(cls.temp_dir, 'test_de.db').replace('\\', '/')
+        cls.db_uri = f'sqlite:///{cls.db_path}'
+        app.config['SQLALCHEMY_DATABASE_URI'] = cls.db_uri
+        with app.app_context():
+            init_db(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     def setUp(self):
         self.client = app.test_client()
@@ -36,7 +52,9 @@ class TestMilestoneDE(unittest.TestCase):
             sess['csrf_token'] = 'test-token-de'
         self.csrf_header = {'X-CSRF-Token': 'test-token-de'}
 
-        # Ensure generated timetable exists
+        # Ensure demo data and generated timetable exists
+        if not app_data.get('courses'):
+            self.client.post('/api/load-demo', json={'scenario': 'standard'}, headers=self.csrf_header)
         if not app_data.get('result') or not app_data['result'].get('assignments_data'):
             self.client.post('/api/generate', headers=self.csrf_header)
 
@@ -194,6 +212,39 @@ class TestMilestoneDE(unittest.TestCase):
         content = res.get_data(as_text=True)
         self.assertIn('CACHE_NAME', content)
         self.assertIn('self.addEventListener', content)
+
+    def test_11_unlinked_faculty_returns_404_no_fallback(self):
+        """Verify faculty account without linked faculty ID receives HTTP 404, never silently assigned another instructor."""
+        with self.client.session_transaction() as sess:
+            sess['user'] = {
+                'id': 'user_unlinked_fac',
+                'username': 'unlinked_user_999',
+                'role': UserRole.FACULTY,
+                'name': 'Unlinked Ghost Faculty',
+                'faculty_id': None
+            }
+        res = self.client.get('/api/faculty/me/schedule')
+        self.assertEqual(res.status_code, 404)
+        data = res.get_json()
+        self.assertIn(data.get('code'), ['FACULTY_NOT_LINKED', 'FACULTY_NOT_FOUND', 'NOT_FOUND'])
+
+        # Also test non-existent faculty_id link
+        with self.client.session_transaction() as sess:
+            sess['user'] = {
+                'id': 'user_bad_link',
+                'username': 'bad_link_user',
+                'role': UserRole.FACULTY,
+                'name': 'Bad Link Faculty',
+                'faculty_id': 'NONEXISTENT_FAC_ID'
+            }
+        res_bad = self.client.get('/api/faculty/me/schedule')
+        self.assertEqual(res_bad.status_code, 404)
+
+    def test_12_isolated_test_database_configuration(self):
+        """Verify test suite is connected to an isolated temporary database, not production autoschedule.db."""
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+        self.assertTrue('test_de.db' in db_uri or 'test_' in db_uri or 'sandbox' in db_uri)
+        self.assertFalse(db_uri.endswith('/autoschedule.db'))
 
 if __name__ == '__main__':
     unittest.main()

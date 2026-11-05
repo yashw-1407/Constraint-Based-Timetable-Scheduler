@@ -23,6 +23,7 @@ class User:
     salt: str
     role: str
     name: str
+    faculty_id: Optional[str] = None
 
     def to_dict(self): return asdict(self)
     @classmethod

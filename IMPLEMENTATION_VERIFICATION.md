@@ -284,9 +284,20 @@ test_milestone_d_e.py:
   test_08_institutional_utilization_report             -> PASS
   test_09_pwa_web_manifest                             -> PASS
   test_10_pwa_service_worker                           -> PASS
+  test_11_unlinked_faculty_returns_404_no_fallback      -> PASS
+  test_12_isolated_test_database_configuration          -> PASS
 
-Total: 71 passed, 0 failed, 0 errors.
+Total: 75 passed, 0 failed, 0 errors across 5 test suites.
 ```
+
+---
+
+## 4.1 Final Hardening and Regression Verification
+
+1. **Multi-Candidate Assignment Synchronization:** `select_variant` and `generate_multiple` now synchronize `result['assignments_data']` directly when an active variant is selected, ensuring immediate persistence to the database and snapshot compatibility (verified in `test_milestone_c.py::test_12`).
+2. **Faculty Account Identity Isolation:** Unlinked faculty accounts receive HTTP 404 (`FACULTY_NOT_LINKED`), preventing silent assignment of other instructor schedules (verified in `test_milestone_d_e.py::test_11`).
+3. **Draft Calendar Isolation:** `/api/faculty/<id>/calendar.ics` enforces strict draft calendar isolation. When a timetable is unpublished, both students and other faculty members attempting to query another instructor's `.ics` URL receive HTTP 403 Forbidden. Only administrative roles (`ADMIN`, `COORDINATOR`) or the instructor themselves can access draft feeds (verified in `test_milestone_c.py::test_09`).
+4. **Complete Test Database Isolation:** `conftest.py` redirects pytest sessions to a sandbox database (`pytest_sandbox.db`). Both `test_milestone_c.py` and `test_milestone_d_e.py` use class-level temporary database fixtures with teardown, ensuring `autoschedule.db` is never modified during test execution.
 
 ---
 
