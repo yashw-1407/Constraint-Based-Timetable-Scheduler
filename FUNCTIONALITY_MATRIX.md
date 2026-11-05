@@ -69,3 +69,4 @@
 1. **Relational Database Migration:** Replace `database.json` flat-file with a robust relational database (SQLite for local standalone, PostgreSQL for cloud SaaS) managed via SQLAlchemy ORM.
 2. **Hierarchical Academic Schema:** Introduce entities for `Institutions`, `Campuses`, `AcademicYears`, `Terms`, `Departments`, and `Programs`.
 3. **Timetable Versioning & State:** Store timestamped schedule runs with version numbers, lifecycle statuses (`DRAFT`, `PUBLISHED`), and change logs.
+

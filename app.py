@@ -10,8 +10,9 @@ Serves the single-page frontend and provides a JSON API for:
 All data is stored in-memory (no database required for the MVP).
 """
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_file
 import os
+import io
 from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
@@ -19,6 +20,8 @@ from scheduler import SchedulingEngine
 from constraints import validate_timetable
 from demo_data import get_demo_data
 from database import load_data, save_data
+import importer
+import exporter
 
 app = Flask(__name__)
 
@@ -683,6 +686,101 @@ def clear_data():
         app_data[key] = None if key in ('config', 'engine', 'result') else []
     save_data(app_data)
     return jsonify({'status': 'ok'})
+
+
+# ---------------------------------------------------------------------------
+# Data Import & Export API
+# ---------------------------------------------------------------------------
+@app.route('/api/import/template', methods=['GET'])
+def download_import_template():
+    """Download starter Excel template for institutional data ingestion."""
+    try:
+        buf = importer.generate_import_template()
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='AutoSchedule_Data_Template.xlsx'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/import/excel', methods=['POST'])
+def import_excel_data():
+    """Import and validate Excel workbook containing institutional assets."""
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'errors': ['No file uploaded. Please select an Excel workbook (.xlsx).']}), 400
+
+    file = request.files['file']
+    if not file.filename or not file.filename.endswith(('.xlsx', '.xlsm')):
+        return jsonify({'status': 'error', 'errors': ['Unsupported file type. Please upload a valid .xlsx workbook.']}), 400
+
+    try:
+        file_bytes = file.read()
+        success, counts, errors, parsed = importer.parse_and_validate_excel(file_bytes)
+
+        if not success:
+            return jsonify({
+                'status': 'error',
+                'message': f'Validation failed with {len(errors)} error(s). No data was imported.',
+                'errors': errors
+            }), 400
+
+        # Merge or replace institutional data
+        mode = request.form.get('mode', 'replace')
+        if mode == 'replace':
+            app_data['rooms'] = parsed['rooms']
+            app_data['faculty'] = parsed['faculty']
+            app_data['sections'] = parsed['sections']
+            app_data['batches'] = parsed['batches']
+            app_data['courses'] = parsed['courses']
+        else:
+            # Append avoiding duplicate IDs
+            existing_room_ids = {r.id for r in app_data['rooms']}
+            app_data['rooms'].extend([r for r in parsed['rooms'] if r.id not in existing_room_ids])
+
+            existing_fac_ids = {f.id for f in app_data['faculty']}
+            app_data['faculty'].extend([f for f in parsed['faculty'] if f.id not in existing_fac_ids])
+
+            existing_sec_ids = {s.id for s in app_data['sections']}
+            app_data['sections'].extend([s for s in parsed['sections'] if s.id not in existing_sec_ids])
+
+            existing_bat_ids = {b.id for b in app_data['batches']}
+            app_data['batches'].extend([b for b in parsed['batches'] if b.id not in existing_bat_ids])
+
+            existing_crs_ids = {c.id for c in app_data['courses']}
+            app_data['courses'].extend([c for c in parsed['courses'] if c.id not in existing_crs_ids])
+
+        # Reset schedule engine state since data changed
+        app_data['engine'] = None
+        app_data['result'] = None
+        save_data(app_data)
+
+        return jsonify({
+            'status': 'ok',
+            'message': 'Excel workbook imported successfully.',
+            'imported': counts
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'errors': [f'Server processing exception: {str(e)}']}), 500
+
+
+@app.route('/api/export/excel', methods=['GET'])
+def export_timetable_excel():
+    """Download multi-tab formatted Excel workbook of current generated timetable."""
+    try:
+        buf = exporter.generate_timetable_excel(app_data)
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='AutoSchedule_Master_Timetable.xlsx'
+        )
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

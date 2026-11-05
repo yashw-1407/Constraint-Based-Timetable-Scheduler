@@ -292,5 +292,50 @@ class TestTimetableScheduler(unittest.TestCase):
         self.assertFalse(check_consecutive_slots([0, 2], slots))
         self.assertFalse(check_consecutive_slots([2, 3], slots))  # 60m lunch gap > 20m
 
+    def test_12_excel_template_and_import(self):
+        """Verify downloading starter Excel template and importing it."""
+        # 1. Download template
+        res = self.client.get('/api/import/template')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.content_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        template_bytes = res.data
+        self.assertGreater(len(template_bytes), 1000)
+
+        # 2. Upload template back via /api/import/excel
+        import io
+        data = {
+            'file': (io.BytesIO(template_bytes), 'template.xlsx')
+        }
+        res_upload = self.client.post('/api/import/excel', data=data, content_type='multipart/form-data')
+        self.assertEqual(res_upload.status_code, 200)
+        upload_json = res_upload.get_json()
+        self.assertEqual(upload_json.get('status'), 'ok')
+        self.assertIn('imported', upload_json)
+        self.assertEqual(upload_json['imported']['rooms'], 2)
+        self.assertEqual(upload_json['imported']['faculty'], 2)
+
+    def test_13_excel_timetable_export(self):
+        """Verify exporting generated timetable to multi-tab formatted Excel workbook."""
+        # Load demo and generate
+        self.client.post('/api/load-demo')
+        gen_res = self.client.post('/api/generate')
+        self.assertEqual(gen_res.status_code, 200)
+
+        # Export timetable
+        export_res = self.client.get('/api/export/excel')
+        self.assertEqual(export_res.status_code, 200)
+        self.assertEqual(export_res.content_type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        excel_bytes = export_res.data
+        self.assertGreater(len(excel_bytes), 5000)
+
+        # Inspect workbook structure
+        import io
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
+        self.assertIn('Master Schedule', wb.sheetnames)
+        self.assertIn('Section Schedules', wb.sheetnames)
+        self.assertIn('Faculty Schedules', wb.sheetnames)
+        self.assertIn('Room Schedules', wb.sheetnames)
+
 if __name__ == '__main__':
     unittest.main()

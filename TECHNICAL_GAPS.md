@@ -162,3 +162,4 @@
 - **Production Observability:**
   - Structured JSON logging using `structlog`.
   - Health check endpoint `/healthz` returning database connectivity and worker pool status.
+

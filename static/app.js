@@ -816,6 +816,8 @@ document.querySelectorAll('.view-btn').forEach(btn => {
         
         const btnPrint = document.getElementById('btn-print');
         if (btnPrint) btnPrint.style.display = 'inline-block';
+        const btnExport = document.getElementById('btn-export-excel');
+        if (btnExport) btnExport.style.display = 'inline-flex';
         
         if (view === 'master') {
             selector.style.display = 'none';
@@ -1156,3 +1158,96 @@ async function saveTraceConfig() {
         showNotification(err.message, 'error');
     }
 }
+
+// ── Excel Ingestion Modal & Controls ─────────────────────────────────────────
+(function () {
+    const modal = document.getElementById('modal-import');
+    const btnOpen = document.getElementById('btn-open-import');
+    const btnClose = document.getElementById('btn-close-import');
+    const btnCancel = document.getElementById('btn-cancel-import');
+    const form = document.getElementById('form-import-excel');
+    const feedback = document.getElementById('import-feedback');
+    const submitBtn = document.getElementById('btn-submit-import');
+
+    function openModal() {
+        if (modal) {
+            modal.style.display = 'flex';
+            if (feedback) { feedback.style.display = 'none'; feedback.innerHTML = ''; }
+            if (form) form.reset();
+        }
+    }
+
+    function closeModal() {
+        if (modal) modal.style.display = 'none';
+    }
+
+    if (btnOpen) btnOpen.addEventListener('click', openModal);
+    if (btnClose) btnClose.addEventListener('click', closeModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeModal);
+
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('excel-file-input');
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                alert('Please select an Excel workbook (.xlsx)');
+                return;
+            }
+
+            const mode = form.querySelector('input[name="import_mode"]:checked')?.value || 'replace';
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('mode', mode);
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Validating & Ingesting...';
+            if (feedback) feedback.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/import/excel', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+
+                if (res.ok && result.status === 'ok') {
+                    const counts = result.imported || {};
+                    feedback.className = 'import-feedback-box feedback-success';
+                    feedback.innerHTML = `
+                        <strong>Import Successful!</strong><br>
+                        Ingested: ${counts.rooms || 0} rooms, ${counts.faculty || 0} faculty, ${counts.sections || 0} sections, ${counts.batches || 0} batches, ${counts.courses || 0} courses.
+                    `;
+                    feedback.style.display = 'block';
+                    showNotification('Institutional data imported successfully', 'success');
+
+                    const activeTab = document.querySelector('.tab-btn.active')?.dataset.target || 'config';
+                    loadTabData(activeTab);
+
+                    setTimeout(closeModal, 1800);
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    const errList = (result.errors || [result.message || 'Validation error'])
+                        .map(err => `<li>${err}</li>`).join('');
+                    feedback.innerHTML = `
+                        <strong>Import Validation Failed:</strong>
+                        <ul style="margin: 6px 0 0 16px; padding: 0;">${errList}</ul>
+                    `;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Network Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload & Validate';
+            }
+        });
+    }
+})();

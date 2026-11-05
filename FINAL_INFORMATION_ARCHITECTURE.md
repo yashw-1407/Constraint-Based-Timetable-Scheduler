@@ -153,3 +153,4 @@ AutoSchedule separates into **5 dedicated functional planes**, each designed for
 | `/admin/telemetry` | **Solver Performance Analytics** | Global telemetry tracking average solve times, constraint failure frequencies, backtrack depths, and computational engine memory footprints. |
 | `/admin/backups` | **System Backups & Disaster Recovery** | Manage automated point-in-time database backups, snapshot restoration, and multi-region data replication. |
 | `/admin/audit` | **Cross-Tenant Security Audit** | Security monitoring of login anomalies, rate-limit triggers, and administrative credential changes. |
+

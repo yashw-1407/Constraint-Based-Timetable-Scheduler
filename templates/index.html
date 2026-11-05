@@ -78,6 +78,12 @@ html, body { overflow-x: clip; width: 100%; }
                     <button id="btn-load-demo" class="btn btn-success">
                         Load Demo Data
                     </button>
+                    <button id="btn-open-import" class="btn btn-secondary">
+                        Import Excel
+                    </button>
+                    <a href="/api/import/template" class="btn btn-outline" download>
+                        Template
+                    </a>
                     <button id="btn-clear-data" class="btn btn-danger">
                         Clear All Data
                     </button>
@@ -558,9 +564,14 @@ html, body { overflow-x: clip; width: 100%; }
                     <h2>Timetable Schedules</h2>
                     <p class="page-desc">Inspect multi-dimensional schedules filtered by Master view, Section cohort, Instructor, or Facility room.</p>
                 </div>
-                <button id="btn-print" class="btn btn-outline" style="display: none;" onclick="window.print()">
-                    Print Timetable
-                </button>
+                <div class="actions">
+                    <a href="/api/export/excel" id="btn-export-excel" class="btn btn-primary" style="display: none;" download>
+                        Export Excel
+                    </a>
+                    <button id="btn-print" class="btn btn-outline" style="display: none;" onclick="window.print()">
+                        Print Timetable
+                    </button>
+                </div>
             </div>
 
             <div class="timetable-filter-bar surface-card">
@@ -854,6 +865,49 @@ html, body { overflow-x: clip; width: 100%; }
             }
         })();
     </script>
+
+    <!-- Excel Ingestion Modal -->
+    <div id="modal-import" class="modal-backdrop" style="display: none;">
+        <div class="modal-card surface-card">
+            <div class="modal-header">
+                <h3>Bulk Ingest Institutional Assets</h3>
+                <button type="button" id="btn-close-import" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    Upload an Excel workbook (.xlsx) containing sheets for Rooms, Faculty, Sections, Batches, and Courses.
+                </p>
+                <div class="import-template-prompt">
+                    <span>Need the standard schema format?</span>
+                    <a href="/api/import/template" class="link-download-template" download>Download Starter Template (.xlsx)</a>
+                </div>
+                <form id="form-import-excel">
+                    <div class="form-group">
+                        <label for="excel-file-input">Select Workbook (.xlsx)</label>
+                        <input type="file" id="excel-file-input" accept=".xlsx,.xlsm" required>
+                    </div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Ingestion Mode</label>
+                        <div class="checkbox-group" style="margin-top: 4px;">
+                            <label class="checkbox-pill">
+                                <input type="radio" name="import_mode" value="replace" checked>
+                                Replace Existing Data
+                            </label>
+                            <label class="checkbox-pill">
+                                <input type="radio" name="import_mode" value="append">
+                                Append New Entries
+                            </label>
+                        </div>
+                    </div>
+                    <div id="import-feedback" style="display: none; margin-top: 16px;"></div>
+                    <div class="form-actions" style="margin-top: 20px; justify-content: flex-end;">
+                        <button type="button" id="btn-cancel-import" class="btn btn-outline">Cancel</button>
+                        <button type="submit" id="btn-submit-import" class="btn btn-primary">Upload &amp; Validate</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
 </body>
 
