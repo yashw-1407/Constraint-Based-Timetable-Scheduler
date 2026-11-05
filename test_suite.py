@@ -13,6 +13,9 @@ from constraints import validate_timetable
 class TestTimetableScheduler(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+        login_res = self.client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        self.csrf_token = login_res.get_json().get('csrf_token', '')
+        self.client.environ_base['HTTP_X_CSRF_TOKEN'] = self.csrf_token
         # Reset data before test
         self.client.post('/api/clear')
 
@@ -527,6 +530,11 @@ class TestTimetableScheduler(unittest.TestCase):
 
     def test_21_user_authentication_flow(self):
         """Verify role authentication, password verification, session state, and logout."""
+        # Clear setUp session to begin flow in unauthenticated state
+        self.client.post('/api/auth/logout')
+        if 'HTTP_X_CSRF_TOKEN' in self.client.environ_base:
+            del self.client.environ_base['HTTP_X_CSRF_TOKEN']
+
         # 1. Initially unauthenticated
         me_res = self.client.get('/api/auth/me')
         self.assertEqual(me_res.status_code, 200)
@@ -542,6 +550,8 @@ class TestTimetableScheduler(unittest.TestCase):
         user_data = login_res.get_json()['user']
         self.assertEqual(user_data['username'], 'admin')
         self.assertEqual(user_data['role'], 'ADMIN')
+        token = login_res.get_json().get('csrf_token')
+        self.client.environ_base['HTTP_X_CSRF_TOKEN'] = token
 
         # 4. /api/auth/me returns authenticated user
         me_auth = self.client.get('/api/auth/me').get_json()
@@ -572,6 +582,9 @@ class TestTimetableScheduler(unittest.TestCase):
     def tearDownClass(cls):
         """Restore standard demo dataset and solve timetable for clean dev environment."""
         client = app.test_client()
+        login_res = client.post('/api/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        csrf = login_res.get_json().get('csrf_token', '')
+        client.environ_base['HTTP_X_CSRF_TOKEN'] = csrf
         client.post('/api/load-demo', json={'scenario': 'standard'})
         client.post('/api/generate')
         client.post('/api/timetable/publish')

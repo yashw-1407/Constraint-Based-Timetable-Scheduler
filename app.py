@@ -13,19 +13,79 @@ All data is stored in-memory (no database required for the MVP).
 from flask import Flask, jsonify, request, render_template, send_file, session
 import os
 import io
+import secrets
+import hmac
+from functools import wraps
+from datetime import timedelta
 from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType, AcademicTerm, Department, User, UserRole
 from time_slots import generate_time_slots, time_to_minutes
 from scheduler_trace import SchedulerTrace
 from scheduler import SchedulingEngine
 from constraints import validate_timetable
 from demo_data import get_demo_data
-from database import load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS, verify_password, hash_password, get_default_users
+from database import init_db, load_data, save_data, DEFAULT_TERMS, DEFAULT_DEPARTMENTS, verify_password, hash_password, get_default_users
 import importer
 import exporter
 import adjuster
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'autoschedule-dev-secret-key-2026')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload size
+
+# Initialize Relational Database & Migrations
+init_db(app)
+
+# ---------------------------------------------------------------------------
+# Authentication & Role-Based Access Control Decorators
+# ---------------------------------------------------------------------------
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = session.get('user')
+        if not user:
+            return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_role(*allowed_roles):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = session.get('user')
+            if not user:
+                return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+            role = user.get('role')
+            if role not in allowed_roles:
+                return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+# ---------------------------------------------------------------------------
+# CSRF Protection Middleware
+# ---------------------------------------------------------------------------
+CSRF_EXEMPT_PATHS = {'/api/auth/login'}
+
+@app.before_request
+def csrf_protect():
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return
+    if request.path in CSRF_EXEMPT_PATHS:
+        return
+    user = session.get('user')
+    if user:
+        token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+        expected = session.get('csrf_token')
+        if not expected or not token or not hmac.compare_digest(token, expected):
+            return jsonify({'error': 'CSRF token missing or invalid', 'code': 'CSRF_FAILED'}), 403
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({'error': 'File upload exceeds maximum allowed size (16MB)', 'code': 'FILE_TOO_LARGE'}), 413
 
 # ---------------------------------------------------------------------------
 # In-memory application state
@@ -52,8 +112,9 @@ app_data = {
     'result': None,          # dict from engine.solve()
 }
 
-# Load existing data on startup
-load_data(app_data)
+# Load existing data on startup within app context
+with app.app_context():
+    load_data(app_data)
 
 def _seed_initial_state_if_needed():
     if not app_data.get('config') or not app_data.get('courses') or not app_data.get('result'):
@@ -86,7 +147,8 @@ def _seed_initial_state_if_needed():
         except Exception as e:
             print(f"Startup seeding warning: {e}")
 
-_seed_initial_state_if_needed()
+with app.app_context():
+    _seed_initial_state_if_needed()
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +185,12 @@ def manage_config():
             })
         return jsonify(None)
 
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         config = WorkingConfig(
@@ -148,6 +216,13 @@ def manage_config():
 def manage_rooms():
     if request.method == 'GET':
         return jsonify([r.to_dict() for r in app_data['rooms']])
+
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         room = Room(
@@ -165,6 +240,8 @@ def manage_rooms():
 
 
 @app.route('/api/rooms/<id>', methods=['DELETE', 'PUT'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_rooms_id(id):
     if request.method == 'DELETE':
         app_data['rooms'] = [r for r in app_data['rooms'] if r.id != id]
@@ -197,8 +274,19 @@ def manage_rooms_id(id):
 # ---------------------------------------------------------------------------
 @app.route('/api/faculty', methods=['GET', 'POST'])
 def manage_faculty():
+    user = session.get('user')
     if request.method == 'GET':
+        if not user:
+            return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+        if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR, UserRole.FACULTY):
+            return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
         return jsonify([f.to_dict() for f in app_data['faculty']])
+
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         app_data['faculty'].append(Faculty(id=data['id'], name=data['name']))
@@ -209,6 +297,8 @@ def manage_faculty():
 
 
 @app.route('/api/faculty/<id>', methods=['DELETE', 'PUT'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_faculty_id(id):
     if request.method == 'DELETE':
         app_data['faculty'] = [x for x in app_data['faculty'] if x.id != id]
@@ -247,6 +337,13 @@ def manage_sections():
                             if b.section_id == s.id]
             result.append(d)
         return jsonify(result)
+
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         section = Section(
@@ -264,6 +361,8 @@ def manage_sections():
 
 
 @app.route('/api/sections/<id>', methods=['DELETE', 'PUT'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_sections_id(id):
     if request.method == 'DELETE':
         app_data['sections'] = [s for s in app_data['sections'] if s.id != id]
@@ -300,6 +399,13 @@ def manage_sections_id(id):
 def manage_batches():
     if request.method == 'GET':
         return jsonify([b.to_dict() for b in app_data['batches']])
+
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         batch = Batch(
@@ -316,6 +422,8 @@ def manage_batches():
 
 
 @app.route('/api/batches/<id>', methods=['DELETE', 'PUT'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_batches_id(id):
     if request.method == 'DELETE':
         app_data['batches'] = [b for b in app_data['batches'] if b.id != id]
@@ -349,6 +457,13 @@ def manage_batches_id(id):
 def manage_courses():
     if request.method == 'GET':
         return jsonify([c.to_dict() for c in app_data['courses']])
+
+    user = session.get('user')
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+    if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+        return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
     try:
         data = request.get_json()
         course = Course(
@@ -358,7 +473,7 @@ def manage_courses():
             section_id=data['section_id'],
             l=int(data.get('l', 0)),
             t=int(data.get('t', 0)),
-                        p=float(data.get('p', 0)),
+            p=float(data.get('p', 0)),
             faculty_ids=data.get('faculty_ids', []),
             assistant_faculty_ids=data.get('assistant_faculty_ids', []),
             room_type=data.get('room_type', RoomType.THEORY_ROOM),
@@ -371,7 +486,10 @@ def manage_courses():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+
 @app.route('/api/courses/<id>', methods=['DELETE', 'PUT'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_courses_id(id):
     if request.method == 'DELETE':
         app_data['courses'] = [c for c in app_data['courses'] if c.id != id]
@@ -421,6 +539,12 @@ def handle_terms():
             'active_term_id': active_id
         })
     elif request.method == 'POST':
+        user = session.get('user')
+        if not user:
+            return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+        if user.get('role') != UserRole.ADMIN:
+            return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
         data = request.get_json(silent=True) or {}
         term_id = data.get('id') or f"term_{len(app_data['terms']) + 1}"
         new_term = AcademicTerm(
@@ -436,6 +560,8 @@ def handle_terms():
 
 
 @app.route('/api/terms/activate/<term_id>', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def activate_term(term_id):
     if not app_data.get('terms'):
         app_data['terms'] = [t for t in DEFAULT_TERMS]
@@ -469,6 +595,12 @@ def handle_departments():
         depts = [d.to_dict() for d in app_data['departments']]
         return jsonify(depts)
     elif request.method == 'POST':
+        user = session.get('user')
+        if not user:
+            return jsonify({'error': 'Authentication required', 'code': 'UNAUTHORIZED'}), 401
+        if user.get('role') != UserRole.ADMIN:
+            return jsonify({'error': 'Insufficient privileges', 'code': 'FORBIDDEN'}), 403
+
         data = request.get_json(silent=True) or {}
         dept_id = data.get('id') or f"dept_{data.get('code', 'NEW').lower()}"
         new_dept = Department(
@@ -487,15 +619,23 @@ def handle_departments():
 @app.route('/api/auth/me', methods=['GET'])
 def get_current_user():
     user = session.get('user')
-    if user:
-        return jsonify({
-            'authenticated': True,
-            'user': user
-        })
-    return jsonify({
-        'authenticated': False,
-        'user': None
+    csrf_token = session.get('csrf_token')
+    if user and not csrf_token:
+        csrf_token = secrets.token_hex(32)
+        session['csrf_token'] = csrf_token
+    resp = jsonify({
+        'authenticated': bool(user),
+        'user': user,
+        'csrf_token': csrf_token if user else None
     })
+    if user and csrf_token:
+        resp.set_cookie(
+            'csrf_token',
+            csrf_token,
+            samesite='Lax',
+            secure=(os.environ.get('FLASK_ENV') == 'production')
+        )
+    return resp
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -514,6 +654,8 @@ def login():
     if not user or not verify_password(password, user.password_hash, user.salt):
         return jsonify({'error': 'Invalid username or password'}), 401
 
+    session.clear()
+    csrf_token = secrets.token_hex(32)
     user_info = {
         'id': user.id,
         'username': user.username,
@@ -521,20 +663,36 @@ def login():
         'name': user.name
     }
     session['user'] = user_info
-    return jsonify({
+    session['csrf_token'] = csrf_token
+    session.permanent = True
+
+    resp = jsonify({
         'status': 'ok',
         'message': f'Signed in successfully as {user.name}',
-        'user': user_info
+        'user': user_info,
+        'csrf_token': csrf_token
     })
+    resp.set_cookie(
+        'csrf_token',
+        csrf_token,
+        samesite='Lax',
+        secure=(os.environ.get('FLASK_ENV') == 'production')
+    )
+    return resp
 
 
 @app.route('/api/auth/logout', methods=['POST'])
+@login_required
 def logout():
-    session.pop('user', None)
-    return jsonify({'status': 'ok', 'message': 'Signed out successfully'})
+    session.clear()
+    resp = jsonify({'status': 'ok', 'message': 'Signed out successfully'})
+    resp.delete_cookie('csrf_token')
+    return resp
 
 
 @app.route('/api/auth/users', methods=['GET', 'POST'])
+@login_required
+@require_role(UserRole.ADMIN)
 def manage_users():
     if not app_data.get('users'):
         app_data['users'] = get_default_users()
@@ -598,6 +756,8 @@ def get_time_slots():
 # Generate Timetable API
 # ---------------------------------------------------------------------------
 @app.route('/api/generate', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def generate_timetable():
     """Run the CSP backtracking scheduler and return the result."""
     if not app_data['config']:
@@ -669,6 +829,15 @@ def _get_or_restore_engine():
 @app.route('/api/timetable/master', methods=['GET'])
 def get_master_timetable():
     """Return the master timetable as a flat list."""
+    pub = app_data.get('publishing') or {}
+    is_published = pub.get('is_published', False) or pub.get('status') == 'PUBLISHED'
+    user = session.get('user')
+    if not is_published:
+        if not user:
+            return jsonify({'error': 'Authentication required to view draft timetable', 'code': 'UNAUTHORIZED'}), 401
+        if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+            return jsonify({'error': 'Timetable is unpublished and cannot be accessed by your role', 'code': 'FORBIDDEN'}), 403
+
     engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
@@ -693,6 +862,22 @@ def get_room_timetable(room_id):
 
 def _get_view(view_type, entity_id):
     """Delegate to the engine's view method."""
+    pub = app_data.get('publishing') or {}
+    is_published = pub.get('is_published', False) or pub.get('status') == 'PUBLISHED'
+    user = session.get('user')
+
+    if not is_published:
+        if not user:
+            return jsonify({'error': 'Authentication required to view draft timetable', 'code': 'UNAUTHORIZED'}), 401
+        role = user.get('role')
+        if role not in (UserRole.ADMIN, UserRole.COORDINATOR):
+            if view_type == 'faculty' and role == UserRole.FACULTY:
+                # Faculty can only view their own draft timetable
+                if user.get('id') != entity_id and user.get('username') != entity_id and user.get('name') != entity_id:
+                    return jsonify({'error': 'Access denied to other faculty member draft schedules', 'code': 'FORBIDDEN'}), 403
+            else:
+                return jsonify({'error': 'Timetable is unpublished and cannot be accessed by your role', 'code': 'FORBIDDEN'}), 403
+
     engine = _get_or_restore_engine()
     result = app_data.get('result')
     if not engine or not result or result.get('status') not in ('success', 'partial'):
@@ -709,6 +894,8 @@ def _get_view(view_type, entity_id):
 
 
 @app.route('/api/timetable/variant/<int:index>', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def select_variant(index):
     engine = _get_or_restore_engine()
     result = app_data.get('result')
@@ -760,6 +947,8 @@ def get_publishing_status():
 
 
 @app.route('/api/timetable/publish', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def publish_timetable():
     engine = _get_or_restore_engine()
     if not engine or not app_data.get('result'):
@@ -779,6 +968,8 @@ def publish_timetable():
 
 
 @app.route('/api/timetable/validate-move', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def api_validate_move():
     engine = _get_or_restore_engine()
     if not engine or not app_data.get('result'):
@@ -802,17 +993,22 @@ def api_validate_move():
     except (TypeError, ValueError):
         return jsonify({'valid': False, 'message': 'Invalid target_start_slot number', 'details': {'code': 'INVALID_SLOT'}}), 400
 
-    valid, message, details = adjuster.validate_move(
-        engine, session_id, target_day, target_start_slot, target_room_id
-    )
-    return jsonify({
-        'valid': valid,
-        'message': message,
-        'details': details
-    })
+    try:
+        valid, message, details = adjuster.validate_move(
+            engine, session_id, target_day, target_start_slot, target_room_id
+        )
+        return jsonify({
+            'valid': valid,
+            'message': message,
+            'details': details
+        })
+    except Exception as e:
+        return jsonify({'valid': False, 'message': f'Validation exception: {str(e)}', 'details': {'code': 'INTERNAL_ERROR'}}), 500
 
 
 @app.route('/api/timetable/move', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def api_execute_move():
     engine = _get_or_restore_engine()
     if not engine or not app_data.get('result'):
@@ -836,20 +1032,25 @@ def api_execute_move():
     except (TypeError, ValueError):
         return jsonify({'status': 'error', 'message': 'Invalid target_start_slot number', 'details': {'code': 'INVALID_SLOT'}}), 400
 
-    success, message, details = adjuster.execute_move(
-        engine, session_id, target_day, target_start_slot, target_room_id, app_data
-    )
-    if not success:
-        return jsonify({'status': 'error', 'message': message, 'details': details}), 400
+    try:
+        success, message, details = adjuster.execute_move(
+            engine, session_id, target_day, target_start_slot, target_room_id, app_data
+        )
+        if not success:
+            return jsonify({'status': 'error', 'message': message, 'details': details}), 400
 
-    return jsonify({
-        'status': 'ok',
-        'message': message,
-        'details': details
-    })
+        return jsonify({
+            'status': 'ok',
+            'message': message,
+            'details': details
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Move exception: {str(e)}', 'details': {'code': 'INTERNAL_ERROR'}}), 500
 
 
 @app.route('/api/timetable/swap', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def api_execute_swap():
     engine = _get_or_restore_engine()
     if not engine or not app_data.get('result'):
@@ -862,20 +1063,25 @@ def api_execute_swap():
     if not session_a_id or not session_b_id:
         return jsonify({'status': 'error', 'message': 'Both session_a_id and session_b_id are required'}), 400
 
-    success, message, details = adjuster.execute_swap(
-        engine, session_a_id, session_b_id, app_data
-    )
-    if not success:
-        return jsonify({'status': 'error', 'message': message, 'details': details}), 400
+    try:
+        success, message, details = adjuster.execute_swap(
+            engine, session_a_id, session_b_id, app_data
+        )
+        if not success:
+            return jsonify({'status': 'error', 'message': message, 'details': details}), 400
 
-    return jsonify({
-        'status': 'ok',
-        'message': message,
-        'details': details
-    })
+        return jsonify({
+            'status': 'ok',
+            'message': message,
+            'details': details
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Swap exception: {str(e)}', 'details': {'code': 'INTERNAL_ERROR'}}), 500
 
 
 @app.route('/api/timetable/unpublish', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def unpublish_timetable():
     pub = {
         'status': 'DRAFT',
@@ -889,6 +1095,8 @@ def unpublish_timetable():
 
 
 @app.route('/api/generate-multiple', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def generate_multiple():
     if not app_data['config']:
         return jsonify({'error': 'Configuration not set'}), 400
@@ -941,13 +1149,10 @@ def generate_multiple():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-# ---------------------------------------------------------------------------
-# Validation API
-
-
-# ---------------------------------------------------------------------------
 
 @app.route('/api/debug/trace/config', methods=['GET', 'POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def manage_trace_config():
     if request.method == 'GET':
         return jsonify(trace_config)
@@ -961,7 +1166,10 @@ def manage_trace_config():
             trace_config['session_filter'] = None
         return jsonify(trace_config)
 
+
 @app.route('/api/debug/trace/download/<fmt>', methods=['GET'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def download_trace(fmt):
     import os
     from flask import send_file
@@ -978,6 +1186,8 @@ def download_trace(fmt):
 
 
 @app.route('/api/validation', methods=['GET'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def validate_current_timetable():
     """Post-generation validation: re-check all hard constraints."""
     engine = _get_or_restore_engine()
@@ -1001,20 +1211,9 @@ def validate_current_timetable():
     })
 
 
-# ---------------------------------------------------------------------------
-# Demo Data / Clear API
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Excel Import API — REMOVED in v1 (demo data only)
-# ---------------------------------------------------------------------------
-# Deferred to a future version. Use /api/load-demo or manual entry.
-
-
-# ---------------------------------------------------------------------------
-# Pre-Generate Summary API  (v1 addition)
-# ---------------------------------------------------------------------------
 @app.route('/api/summary', methods=['GET'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def get_summary():
     """Return a summary of the current dataset before timetable generation."""
     cfg   = app_data['config']
@@ -1057,7 +1256,10 @@ def get_summary():
         'config_set':               cfg is not None,
     })
 
+
 @app.route('/api/load-demo', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def load_demo():
     """Load the built-in demonstration dataset."""
     try:
@@ -1079,6 +1281,8 @@ def load_demo():
 
 
 @app.route('/api/clear', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN)
 def clear_data():
     """Reset all application state."""
     for key in ('config', 'engine', 'result', 'publishing'):
@@ -1112,6 +1316,8 @@ def download_import_template():
 
 
 @app.route('/api/import/excel', methods=['POST'])
+@login_required
+@require_role(UserRole.ADMIN, UserRole.COORDINATOR)
 def import_excel_data():
     """Import and validate Excel workbook containing institutional assets."""
     if 'file' not in request.files:
@@ -1174,6 +1380,15 @@ def import_excel_data():
 @app.route('/api/export/excel', methods=['GET'])
 def export_timetable_excel():
     """Download multi-tab formatted Excel workbook of current generated timetable."""
+    pub = app_data.get('publishing') or {}
+    is_published = pub.get('is_published', False) or pub.get('status') == 'PUBLISHED'
+    user = session.get('user')
+    if not is_published:
+        if not user:
+            return jsonify({'error': 'Authentication required to export draft timetable', 'code': 'UNAUTHORIZED'}), 401
+        if user.get('role') not in (UserRole.ADMIN, UserRole.COORDINATOR):
+            return jsonify({'error': 'Timetable is unpublished and cannot be exported by your role', 'code': 'FORBIDDEN'}), 403
+
     try:
         _get_or_restore_engine()
         buf = exporter.generate_timetable_excel(app_data)

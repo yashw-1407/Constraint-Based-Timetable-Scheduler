@@ -1,5 +1,15 @@
 const API_BASE = '';
 
+// CSRF Token Management
+let currentCsrfToken = '';
+
+function getCsrfToken() {
+    if (currentCsrfToken) return currentCsrfToken;
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+    return '';
+}
+
 // Notification system
 function showNotification(message, type = 'success') {
     const notif = document.getElementById('notification');
@@ -12,15 +22,25 @@ function showNotification(message, type = 'success') {
 
 async function fetchJSON(url, options = {}) {
     try {
+        const method = (options.method || 'GET').toUpperCase();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        const csrf = getCsrfToken();
+        if (csrf && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            headers['X-CSRF-Token'] = csrf;
+        }
+
         const response = await fetch(url, {
             ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
+            headers
         });
         const data = await response.json();
         if (!response.ok) {
+            if (response.status === 401) {
+                openAuthModal();
+            }
             throw new Error(data.message || data.error || `HTTP error! status: ${response.status}`);
         }
         return data;
@@ -1365,8 +1385,13 @@ function initImportModal() {
             if (feedback) feedback.style.display = 'none';
 
             try {
+                const headers = {};
+                const csrf = getCsrfToken();
+                if (csrf) headers['X-CSRF-Token'] = csrf;
+
                 const res = await fetch('/api/import/excel', {
                     method: 'POST',
+                    headers: headers,
                     body: formData
                 });
                 const result = await res.json();
@@ -1584,6 +1609,7 @@ async function checkAuthStatus() {
         if (!res.ok) return;
         const data = await res.json();
         currentUser = data.authenticated ? data.user : null;
+        if (data.csrf_token) currentCsrfToken = data.csrf_token;
         updateAuthHeaderUI();
     } catch (e) {
         console.warn('Could not check auth status:', e);
@@ -1612,6 +1638,7 @@ async function handleSignOut() {
     try {
         await fetchJSON('/api/auth/logout', { method: 'POST' });
         currentUser = null;
+        currentCsrfToken = '';
         updateAuthHeaderUI();
         showNotification('Signed out successfully', 'info');
     } catch (e) {
@@ -1703,6 +1730,7 @@ function initAuthModal() {
 
                 if (res.status === 'ok') {
                     currentUser = res.user;
+                    if (res.csrf_token) currentCsrfToken = res.csrf_token;
                     updateAuthHeaderUI();
                     showNotification(`Welcome, ${res.user.name}!`, 'success');
                     closeAuthModal();

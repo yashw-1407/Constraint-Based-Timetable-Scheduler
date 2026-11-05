@@ -41,7 +41,7 @@ def validate_move(
         ), {"code": "INVALID_DAY"}
 
     # 2. Slot bounds check
-    duration = session.duration_slots
+    duration = getattr(engine, '_get_session_duration', lambda s: getattr(s, 'duration_slots', 1))(session)
     end_slot = target_start_slot + duration
     if target_start_slot < 0 or end_slot > len(engine.time_slots):
         return False, (
@@ -76,9 +76,11 @@ def validate_move(
         return False, f"Section {session.section_id} is locked to home room {home_r.name if home_r else home_room_id}.", {"code": "HOME_ROOM_MISMATCH"}
 
     if not check_room_suitability(session, target_room):
+        room_type_str = getattr(target_room.room_type, 'value', str(target_room.room_type))
+        course_type_str = getattr(session.course_type, 'value', str(session.course_type))
         return False, (
-            f"Room '{target_room.name}' ({target_room.room_type.value}) is not suitable "
-            f"for {session.course_code} ({session.course_type.value})."
+            f"Room '{target_room.name}' ({room_type_str}) is not suitable "
+            f"for {session.course_code} ({course_type_str})."
         ), {"code": "ROOM_SUITABILITY_MISMATCH"}
 
     strength = engine._get_scheduling_strength(session)
@@ -183,17 +185,38 @@ def execute_swap(
         return False, "Both sessions must have active assignments to perform a swap.", {"code": "UNASSIGNED_SESSION"}
 
     # Validate duration match
-    if session_a.duration_slots != session_b.duration_slots:
+    dur_a = getattr(engine, '_get_session_duration', lambda s: getattr(s, 'duration_slots', 1))(session_a)
+    dur_b = getattr(engine, '_get_session_duration', lambda s: getattr(s, 'duration_slots', 1))(session_b)
+    if dur_a != dur_b:
         return False, (
-            f"Cannot swap sessions of unequal durations ({session_a.duration_slots} vs {session_b.duration_slots} slots)."
+            f"Cannot swap sessions of unequal durations ({dur_a} vs {dur_b} slots)."
         ), {"code": "DURATION_MISMATCH"}
+
+    room_a = next((r for r in engine.rooms if r.id == assign_a.room_id), None)
+    room_b = next((r for r in engine.rooms if r.id == assign_b.room_id), None)
+
+    # Validate room suitability and capacity for session_a in room_b
+    if room_b:
+        if not check_room_suitability(session_a, room_b):
+            return False, f"Room '{room_b.name}' is not suitable for {session_a.course_code}.", {"code": "ROOM_SUITABILITY_MISMATCH"}
+        strength_a = engine._get_scheduling_strength(session_a)
+        if strength_a and room_b.capacity < strength_a:
+            return False, f"Room '{room_b.name}' capacity ({room_b.capacity}) is smaller than cohort strength ({strength_a}).", {"code": "CAPACITY_EXCEEDED"}
+
+    # Validate room suitability and capacity for session_b in room_a
+    if room_a:
+        if not check_room_suitability(session_b, room_a):
+            return False, f"Room '{room_a.name}' is not suitable for {session_b.course_code}.", {"code": "ROOM_SUITABILITY_MISMATCH"}
+        strength_b = engine._get_scheduling_strength(session_b)
+        if strength_b and room_a.capacity < strength_b:
+            return False, f"Room '{room_a.name}' capacity ({room_a.capacity}) is smaller than cohort strength ({strength_b}).", {"code": "CAPACITY_EXCEEDED"}
 
     # Unassign both
     engine._unassign(session_a)
     engine._unassign(session_b)
 
-    slots_b = list(range(assign_b.start_slot_index, assign_b.start_slot_index + session_a.duration_slots))
-    slots_a = list(range(assign_a.start_slot_index, assign_a.start_slot_index + session_b.duration_slots))
+    slots_b = list(range(assign_b.start_slot_index, assign_b.start_slot_index + dur_a))
+    slots_a = list(range(assign_a.start_slot_index, assign_a.start_slot_index + dur_b))
 
     # Check session_a at position B
     valid_a, reason_a = engine._check_hard_constraints(session_a, assign_b.day, slots_b, assign_b.room_id)
@@ -246,7 +269,14 @@ def _diagnose_move_conflict(
     """Produce clear, human-readable explanations of specific scheduling collisions."""
     times = f"{engine.time_slots[slot_indices[0]].start_time} - {engine.time_slots[slot_indices[-1]].end_time}"
 
-    if fail_reason == 'FACULTY_CONFLICT':
+    if fail_reason == 'FACULTY_UNAVAILABLE':
+        for fid in session.faculty_ids:
+            fac = engine.faculty_by_id.get(fid)
+            fac_name = fac.name if fac else fid
+            return f"Faculty unavailable: {fac_name} is marked unavailable during {target_day} ({times})."
+        return f"Faculty unavailable: One or more instructors are unavailable during {target_day} ({times})."
+
+    elif fail_reason == 'FACULTY_CONFLICT':
         for fid in session.faculty_ids:
             fac_sched = engine.faculty_schedule.get(fid, {}).get(target_day, {})
             for slot in slot_indices:

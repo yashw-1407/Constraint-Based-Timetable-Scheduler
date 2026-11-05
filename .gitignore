@@ -12,6 +12,9 @@ ENV/
 
 # Runtime data (re-generated on startup)
 database.json
+*.db
+instance/
+backup_*.json
 
 # Scheduler trace output
 scheduler_trace.json

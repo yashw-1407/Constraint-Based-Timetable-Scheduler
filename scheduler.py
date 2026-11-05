@@ -181,6 +181,10 @@ class SchedulingEngine:
         section = self.sections_by_id.get(session.section_id)
         return section.strength if section else None
 
+    def _get_session_duration(self, session: ScheduleSession) -> int:
+        """Get the duration of a session in time slots."""
+        return getattr(session, 'duration_slots', 1)
+
     # =========================================================================
     # PHASE 2: DOMAIN GENERATION (DMS: Cartesian Product, OS: Resource Filter)
     # =========================================================================
@@ -267,6 +271,18 @@ class SchedulingEngine:
 
         if not check_faculty_conflict(session.faculty_ids, day, slot_indices, self.faculty_schedule):
             return False, 'FACULTY_CONFLICT'
+
+        for fid in session.faculty_ids:
+            fac = self.faculty_by_id.get(fid)
+            if fac:
+                unavail = getattr(fac, 'unavailable_slots', None) or []
+                for un in unavail:
+                    if un.get('day') == day and un.get('slot_index') in slot_indices:
+                        return False, 'FACULTY_UNAVAILABLE'
+                avail_days = getattr(fac, 'available_days', None)
+                if avail_days and day not in avail_days:
+                    return False, 'FACULTY_UNAVAILABLE'
+
         if not check_room_conflict(room_id, day, slot_indices, self.room_schedule):
             return False, 'ROOM_CONFLICT'
         return True, None
@@ -349,16 +365,22 @@ class SchedulingEngine:
 
     def _unassign(self, session: ScheduleSession):
         """Remove an assignment and clean up lookup tables."""
-        assign = self.assignments.pop(session.id)
+        assign = self.assignments.pop(session.id, None)
+        if not assign:
+            return
         for slot in range(assign.start_slot_index,
                           assign.start_slot_index + session.duration_slots):
             if session.batch_id:
-                del self.batch_schedule[session.batch_id][assign.day][slot]
+                if session.batch_id in self.batch_schedule and assign.day in self.batch_schedule[session.batch_id]:
+                    self.batch_schedule[session.batch_id][assign.day].pop(slot, None)
             else:
-                del self.section_schedule[session.section_id][assign.day][slot]
+                if session.section_id in self.section_schedule and assign.day in self.section_schedule[session.section_id]:
+                    self.section_schedule[session.section_id][assign.day].pop(slot, None)
             for fid in session.faculty_ids:
-                del self.faculty_schedule[fid][assign.day][slot]
-            del self.room_schedule[assign.room_id][assign.day][slot]
+                if fid in self.faculty_schedule and assign.day in self.faculty_schedule[fid]:
+                    self.faculty_schedule[fid][assign.day].pop(slot, None)
+            if assign.room_id in self.room_schedule and assign.day in self.room_schedule[assign.room_id]:
+                self.room_schedule[assign.room_id][assign.day].pop(slot, None)
 
     # =========================================================================
     # PHASE 6: MRV HEURISTIC (DAA: Fail-First Search Space Pruning)
@@ -514,6 +536,7 @@ class SchedulingEngine:
         """Load a specific variant's state into the engine."""
         self.assignments.clear()
         self.section_schedule.clear()
+        self.batch_schedule.clear()
         self.faculty_schedule.clear()
         self.room_schedule.clear()
         

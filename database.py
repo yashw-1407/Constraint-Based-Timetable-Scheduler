@@ -1,11 +1,50 @@
-import json
+"""Database persistence and service layer for AutoSchedule.
+
+Uses SQLite with SQLAlchemy ORM as the primary persistence layer.
+Supports PostgreSQL through DATABASE_URL configuration.
+Includes Flask-Migrate integration, atomic transactions, password hashing,
+and backward-compatible in-memory dataclass translation for scheduler decoupling.
+"""
+
 import os
-import threading
+import json
 import hashlib
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course, AcademicTerm, Department, User, UserRole
+import hmac
+import threading
+from datetime import datetime, timezone
+from contextlib import contextmanager
+from flask import has_app_context
+from flask_migrate import Migrate
+
+from models import (
+    WorkingConfig, Room, Faculty, Section, Batch, Course,
+    AcademicTerm, Department, User, UserRole, Assignment
+)
+from db_models import (
+    db, DBAcademicTerm, DBDepartment, DBUser, DBWorkingConfig,
+    DBRoom, DBFaculty, DBSection, DBBatch, DBCourse,
+    course_faculty, course_lab_batches, DBTimetablePublication,
+    DBTimetableAssignment, DBScheduleVersion
+)
 
 DB_FILE = 'database.json'
 _lock = threading.Lock()
+migrate = None
+_app = None
+
+@contextmanager
+def db_context():
+    if not has_app_context() and _app is not None:
+        with _app.app_context():
+            yield
+    else:
+        yield
+
+def get_database_uri():
+    """Return configured database URI or default SQLite database in project directory."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, 'autoschedule.db').replace('\\', '/')
+    return os.environ.get('DATABASE_URL', f'sqlite:///{db_path}')
 
 def hash_password(password: str, salt: str = None) -> tuple:
     if not salt:
@@ -15,16 +54,18 @@ def hash_password(password: str, salt: str = None) -> tuple:
 
 def verify_password(password: str, password_hash: str, salt: str) -> bool:
     dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
-    return dk.hex() == password_hash
+    return hmac.compare_digest(dk.hex(), password_hash)
 
 def get_default_users():
     admin_h, admin_s = hash_password('admin123', 'seededsaltadmin1')
     coord_h, coord_s = hash_password('coord123', 'seededsaltcoord1')
     fac_h, fac_s = hash_password('faculty123', 'seededsaltfaculty1')
+    student_h, student_s = hash_password('student123', 'seededsaltstudent1')
     return [
         User(id='user_admin', username='admin', password_hash=admin_h, salt=admin_s, role=UserRole.ADMIN, name='System Administrator'),
         User(id='user_coord', username='coordinator', password_hash=coord_h, salt=coord_s, role=UserRole.COORDINATOR, name='Academic Coordinator'),
-        User(id='user_faculty', username='faculty', password_hash=fac_h, salt=fac_s, role=UserRole.FACULTY, name='Faculty Member')
+        User(id='user_faculty', username='faculty', password_hash=fac_h, salt=fac_s, role=UserRole.FACULTY, name='Faculty Member'),
+        User(id='user_student', username='student', password_hash=student_h, salt=student_s, role=UserRole.STUDENT, name='Student User')
     ]
 
 DEFAULT_TERMS = [
@@ -37,12 +78,551 @@ DEFAULT_DEPARTMENTS = [
     Department(id='dept_ece', name='Electronics & Communication', code='ECE')
 ]
 
-def _dataclass_to_dict(obj):
-    return obj.to_dict()
+def init_db(app):
+    """Initialize SQLAlchemy, Flask-Migrate, create tables, and seed defaults."""
+    global migrate, _app
+    _app = app
+    app.config.setdefault('SQLALCHEMY_DATABASE_URI', get_database_uri())
+    app.config.setdefault('SQLALCHEMY_TRACK_MODIFICATIONS', False)
+
+    if 'sqlalchemy' not in app.extensions:
+        db.init_app(app)
+        migrate = Migrate(app, db)
+
+    with app.app_context():
+        db.create_all()
+
+        # Seed terms if empty
+        if not db.session.query(DBAcademicTerm).first():
+            for t in DEFAULT_TERMS:
+                db.session.add(DBAcademicTerm(
+                    id=t.id,
+                    name=t.name,
+                    academic_year=t.academic_year,
+                    semester_type=t.semester_type,
+                    is_active=t.is_active
+                ))
+
+        # Seed departments if empty
+        if not db.session.query(DBDepartment).first():
+            for d in DEFAULT_DEPARTMENTS:
+                db.session.add(DBDepartment(id=d.id, name=d.name, code=d.code))
+
+        # Seed users if empty
+        if not db.session.query(DBUser).first():
+            for u in get_default_users():
+                db.session.add(DBUser(
+                    id=u.id,
+                    username=u.username,
+                    password_hash=u.password_hash,
+                    salt=u.salt,
+                    role=u.role,
+                    name=u.name
+                ))
+
+        db.session.commit()
+
+def load_data(app_data):
+    """Load institutional data from database into application memory."""
+    with _lock, db_context():
+        try:
+            # 1. Terms
+            db_terms = db.session.query(DBAcademicTerm).all()
+            if db_terms:
+                app_data['terms'] = [
+                    AcademicTerm(
+                        id=t.id,
+                        name=t.name,
+                        academic_year=t.academic_year,
+                        semester_type=t.semester_type,
+                        is_active=t.is_active
+                    ) for t in db_terms
+                ]
+                active_term = next((t for t in db_terms if t.is_active), db_terms[0])
+                app_data['active_term_id'] = active_term.id
+            else:
+                app_data['terms'] = [t for t in DEFAULT_TERMS]
+                app_data['active_term_id'] = 'term_2026_fall'
+
+            active_term_id = app_data.get('active_term_id', 'term_2026_fall')
+
+            # 2. Departments
+            db_depts = db.session.query(DBDepartment).all()
+            app_data['departments'] = [
+                Department(id=d.id, name=d.name, code=d.code) for d in db_depts
+            ] if db_depts else [d for d in DEFAULT_DEPARTMENTS]
+
+            # 3. Users
+            db_users = db.session.query(DBUser).all()
+            app_data['users'] = [
+                User(
+                    id=u.id,
+                    username=u.username,
+                    password_hash=u.password_hash,
+                    salt=u.salt,
+                    role=u.role,
+                    name=u.name
+                ) for u in db_users
+            ] if db_users else get_default_users()
+
+            # 4. Working Config
+            db_cfg = db.session.query(DBWorkingConfig).filter_by(academic_term_id=active_term_id).first()
+            if not db_cfg:
+                db_cfg = db.session.query(DBWorkingConfig).first()
+
+            if db_cfg:
+                app_data['config'] = WorkingConfig(
+                    working_days=json.loads(db_cfg.working_days_json) if db_cfg.working_days_json else [],
+                    start_time=db_cfg.start_time,
+                    end_time=db_cfg.end_time,
+                    slot_duration_minutes=db_cfg.slot_duration_minutes,
+                    lunch_start=db_cfg.lunch_start,
+                    lunch_end=db_cfg.lunch_end,
+                    breaks=json.loads(db_cfg.breaks_json) if db_cfg.breaks_json else []
+                )
+            else:
+                app_data['config'] = None
+
+            # 5. Rooms
+            db_rooms = db.session.query(DBRoom).all()
+            app_data['rooms'] = [
+                Room(
+                    id=r.id,
+                    name=r.name,
+                    room_type=r.room_type,
+                    capacity=r.capacity,
+                    category=r.category
+                ) for r in db_rooms
+            ]
+
+            # 6. Faculty
+            db_faculty = db.session.query(DBFaculty).all()
+            app_data['faculty'] = [
+                Faculty(
+                    id=f.id,
+                    name=f.name,
+                    available_days=json.loads(f.available_days_json) if f.available_days_json else None,
+                    unavailable_slots=json.loads(f.unavailable_slots_json) if f.unavailable_slots_json else None
+                ) for f in db_faculty
+            ]
+
+            # 7. Sections
+            db_sections = db.session.query(DBSection).all()
+            app_data['sections'] = [
+                Section(
+                    id=s.id,
+                    name=s.name,
+                    semester=s.semester,
+                    division=s.division,
+                    strength=s.strength,
+                    home_room_id=s.home_room_id
+                ) for s in db_sections
+            ]
+
+            # 8. Batches
+            db_batches = db.session.query(DBBatch).all()
+            app_data['batches'] = [
+                Batch(
+                    id=b.id,
+                    name=b.name,
+                    section_id=b.section_id,
+                    strength=b.strength,
+                    home_room_id=b.home_room_id
+                ) for b in db_batches
+            ]
+
+            # 9. Courses
+            db_courses = db.session.query(DBCourse).all()
+            loaded_courses = []
+            for c in db_courses:
+                # Get linked faculty
+                lead_fac = [r[0] for r in db.session.query(course_faculty.c.faculty_id).filter_by(course_id=c.id, is_assistant=False).all()]
+                asst_fac = [r[0] for r in db.session.query(course_faculty.c.faculty_id).filter_by(course_id=c.id, is_assistant=True).all()]
+                batches = [r[0] for r in db.session.query(course_lab_batches.c.batch_id).filter_by(course_id=c.id).all()]
+
+                loaded_courses.append(Course(
+                    id=c.id,
+                    name=c.name,
+                    code=c.code,
+                    section_id=c.section_id,
+                    l=c.l,
+                    t=c.t,
+                    p=c.p,
+                    faculty_ids=lead_fac,
+                    assistant_faculty_ids=asst_fac,
+                    room_type=c.room_type,
+                    required_room_id=c.required_room_id,
+                    lab_batches=batches
+                ))
+            app_data['courses'] = loaded_courses
+
+            # 10. Publication
+            db_pub = db.session.query(DBTimetablePublication).filter_by(academic_term_id=active_term_id).first()
+            if db_pub:
+                app_data['publishing'] = {
+                    'status': db_pub.status,
+                    'is_published': db_pub.is_published,
+                    'published_at': db_pub.published_at,
+                    'term': db_pub.term_name
+                }
+            else:
+                app_data['publishing'] = None
+
+            # 11. Schedule Assignments & Result
+            db_assignments = db.session.query(DBTimetableAssignment).filter_by(academic_term_id=active_term_id, variant_index=0).all()
+            db_version = db.session.query(DBScheduleVersion).filter_by(academic_term_id=active_term_id).order_by(DBScheduleVersion.id.desc()).first()
+
+            if db_assignments:
+                assignments_data = [
+                    {
+                        'session_id': a.session_id,
+                        'day': a.day,
+                        'start_slot_index': a.start_slot_index,
+                        'room_id': a.room_id
+                    } for a in db_assignments
+                ]
+
+                result_dict = {}
+                if db_version and db_version.result_json:
+                    try:
+                        result_dict = json.loads(db_version.result_json)
+                    except Exception:
+                        pass
+
+                result_dict['status'] = result_dict.get('status', 'SUCCESS')
+                result_dict['assignments_data'] = assignments_data
+                if 'soft_score' not in result_dict and db_version and db_version.soft_score is not None:
+                    result_dict['soft_score'] = {'total_score': db_version.soft_score}
+
+                app_data['result'] = result_dict
+            elif db_version and db_version.result_json:
+                try:
+                    app_data['result'] = json.loads(db_version.result_json)
+                except Exception:
+                    app_data['result'] = None
+            else:
+                app_data['result'] = None
+
+            # 12. Restore SchedulingEngine
+            if app_data.get('result') and app_data.get('config') and app_data['result'].get('assignments_data'):
+                try:
+                    from scheduler import SchedulingEngine
+                    eng = SchedulingEngine(
+                        app_data['config'],
+                        app_data['courses'],
+                        app_data['rooms'],
+                        app_data['faculty'],
+                        app_data['sections'],
+                        app_data['batches']
+                    )
+                    eng.load_assignments_data(app_data['result']['assignments_data'])
+                    app_data['engine'] = eng
+                except Exception as e:
+                    print(f"Engine restore warning in load_data: {e}")
+
+        except Exception as e:
+            print(f"Error loading from relational database: {e}")
+            _load_from_json_fallback(app_data)
+
+def _load_from_json_fallback(app_data):
+    """Fallback loader from database.json if database connection fails."""
+    if not os.path.exists(DB_FILE):
+        return
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if data.get('config'):
+            app_data['config'] = WorkingConfig.from_dict(data['config'])
+        app_data['rooms'] = [Room.from_dict(d) for d in data.get('rooms', [])]
+        app_data['faculty'] = [Faculty.from_dict(d) for d in data.get('faculty', [])]
+        app_data['sections'] = [Section.from_dict(d) for d in data.get('sections', [])]
+        app_data['batches'] = [Batch.from_dict(d) for d in data.get('batches', [])]
+        app_data['courses'] = [Course.from_dict(d) for d in data.get('courses', [])]
+        app_data['publishing'] = data.get('publishing')
+        app_data['result'] = data.get('result')
+        app_data['terms'] = [AcademicTerm.from_dict(d) for d in data.get('terms', [])]
+        app_data['departments'] = [Department.from_dict(d) for d in data.get('departments', [])]
+        app_data['active_term_id'] = data.get('active_term_id', 'term_2026_fall')
+        app_data['users'] = [User.from_dict(d) for d in data.get('users', [])]
+    except Exception as e:
+        print(f"Fallback json load error: {e}")
 
 def save_data(app_data):
-    """Transactional save to JSON file."""
-    with _lock:
+    """Transactional persistence to relational database and backup JSON."""
+    with _lock, db_context():
+        try:
+            active_term_id = app_data.get('active_term_id', 'term_2026_fall')
+
+            # 1. Academic Terms
+            for t in app_data.get('terms', []):
+                db_t = db.session.get(DBAcademicTerm, t.id)
+                is_act = (t.id == active_term_id) or getattr(t, 'is_active', False)
+                if not db_t:
+                    db.session.add(DBAcademicTerm(
+                        id=t.id, name=t.name, academic_year=t.academic_year,
+                        semester_type=getattr(t, 'semester_type', 'ODD'), is_active=is_act
+                    ))
+                else:
+                    db_t.name = t.name
+                    db_t.academic_year = t.academic_year
+                    db_t.semester_type = getattr(t, 'semester_type', db_t.semester_type)
+                    db_t.is_active = is_act
+
+            # 2. Departments
+            for d in app_data.get('departments', []):
+                db_d = db.session.get(DBDepartment, d.id)
+                if not db_d:
+                    db.session.add(DBDepartment(id=d.id, name=d.name, code=d.code))
+                else:
+                    db_d.name = d.name
+                    db_d.code = d.code
+
+            # 3. Users
+            for u in app_data.get('users', []):
+                db_u = db.session.get(DBUser, u.id)
+                if not db_u:
+                    db.session.add(DBUser(
+                        id=u.id, username=u.username, password_hash=u.password_hash,
+                        salt=u.salt, role=u.role, name=u.name
+                    ))
+                else:
+                    db_u.username = u.username
+                    db_u.password_hash = u.password_hash
+                    db_u.salt = u.salt
+                    db_u.role = u.role
+                    db_u.name = u.name
+
+            # 4. Working Config
+            cfg = app_data.get('config')
+            if cfg:
+                db_cfg = db.session.query(DBWorkingConfig).filter_by(academic_term_id=active_term_id).first()
+                working_days = json.dumps(cfg.working_days)
+                breaks = json.dumps(cfg.breaks)
+                if not db_cfg:
+                    db.session.add(DBWorkingConfig(
+                        academic_term_id=active_term_id,
+                        working_days_json=working_days,
+                        start_time=cfg.start_time,
+                        end_time=cfg.end_time,
+                        slot_duration_minutes=cfg.slot_duration_minutes,
+                        lunch_start=cfg.lunch_start,
+                        lunch_end=cfg.lunch_end,
+                        breaks_json=breaks
+                    ))
+                else:
+                    db_cfg.working_days_json = working_days
+                    db_cfg.start_time = cfg.start_time
+                    db_cfg.end_time = cfg.end_time
+                    db_cfg.slot_duration_minutes = cfg.slot_duration_minutes
+                    db_cfg.lunch_start = cfg.lunch_start
+                    db_cfg.lunch_end = cfg.lunch_end
+                    db_cfg.breaks_json = breaks
+
+            # 5. Rooms (reconcile)
+            current_room_ids = {r.id for r in app_data.get('rooms', [])}
+            # Remove rooms no longer present
+            for db_r in db.session.query(DBRoom).all():
+                if db_r.id not in current_room_ids:
+                    db.session.query(DBTimetableAssignment).filter_by(room_id=db_r.id).delete()
+                    db.session.delete(db_r)
+            for r in app_data.get('rooms', []):
+                db_r = db.session.get(DBRoom, r.id)
+                if not db_r:
+                    db.session.add(DBRoom(
+                        id=r.id, name=r.name, room_type=r.room_type,
+                        capacity=r.capacity, category=r.category
+                    ))
+                else:
+                    db_r.name = r.name
+                    db_r.room_type = r.room_type
+                    db_r.capacity = r.capacity
+                    db_r.category = r.category
+
+            # 6. Faculty (reconcile)
+            current_fac_ids = {f.id for f in app_data.get('faculty', [])}
+            for db_f in db.session.query(DBFaculty).all():
+                if db_f.id not in current_fac_ids:
+                    db.session.delete(db_f)
+            for f in app_data.get('faculty', []):
+                db_f = db.session.get(DBFaculty, f.id)
+                avail_days = json.dumps(f.available_days) if f.available_days is not None else None
+                unavail_slots = json.dumps(f.unavailable_slots) if f.unavailable_slots is not None else None
+                if not db_f:
+                    db.session.add(DBFaculty(
+                        id=f.id, name=f.name, available_days_json=avail_days,
+                        unavailable_slots_json=unavail_slots
+                    ))
+                else:
+                    db_f.name = f.name
+                    db_f.available_days_json = avail_days
+                    db_f.unavailable_slots_json = unavail_slots
+
+            # 7. Sections (reconcile)
+            current_sec_ids = {s.id for s in app_data.get('sections', [])}
+            for db_s in db.session.query(DBSection).all():
+                if db_s.id not in current_sec_ids:
+                    db.session.delete(db_s)
+            for s in app_data.get('sections', []):
+                db_s = db.session.get(DBSection, s.id)
+                if not db_s:
+                    db.session.add(DBSection(
+                        id=s.id, name=s.name, semester=s.semester,
+                        division=s.division, strength=s.strength,
+                        home_room_id=s.home_room_id, academic_term_id=active_term_id
+                    ))
+                else:
+                    db_s.name = s.name
+                    db_s.semester = s.semester
+                    db_s.division = s.division
+                    db_s.strength = s.strength
+                    db_s.home_room_id = s.home_room_id
+                    db_s.academic_term_id = active_term_id
+
+            # 8. Batches (reconcile)
+            current_batch_ids = {b.id for b in app_data.get('batches', [])}
+            for db_b in db.session.query(DBBatch).all():
+                if db_b.id not in current_batch_ids:
+                    db.session.delete(db_b)
+            for b in app_data.get('batches', []):
+                db_b = db.session.get(DBBatch, b.id)
+                if not db_b:
+                    db.session.add(DBBatch(
+                        id=b.id, name=b.name, section_id=b.section_id,
+                        strength=b.strength, home_room_id=b.home_room_id
+                    ))
+                else:
+                    db_b.name = b.name
+                    db_b.section_id = b.section_id
+                    db_b.strength = b.strength
+                    db_b.home_room_id = b.home_room_id
+
+            # 9. Courses (reconcile)
+            current_course_ids = {c.id for c in app_data.get('courses', [])}
+            for db_c in db.session.query(DBCourse).all():
+                if db_c.id not in current_course_ids:
+                    db.session.delete(db_c)
+            for c in app_data.get('courses', []):
+                db_c = db.session.get(DBCourse, c.id)
+                if not db_c:
+                    db.session.add(DBCourse(
+                        id=c.id, name=c.name, code=c.code, section_id=c.section_id,
+                        academic_term_id=active_term_id, l=c.l, t=c.t, p=c.p,
+                        room_type=c.room_type, required_room_id=c.required_room_id
+                    ))
+                else:
+                    db_c.name = c.name
+                    db_c.code = c.code
+                    db_c.section_id = c.section_id
+                    db_c.academic_term_id = active_term_id
+                    db_c.l = c.l
+                    db_c.t = c.t
+                    db_c.p = c.p
+                    db_c.room_type = c.room_type
+                    db_c.required_room_id = c.required_room_id
+
+            db.session.flush()
+
+            # Course associations
+            for c in app_data.get('courses', []):
+                db.session.execute(course_faculty.delete().where(course_faculty.c.course_id == c.id))
+                db.session.execute(course_lab_batches.delete().where(course_lab_batches.c.course_id == c.id))
+                for f_id in getattr(c, 'faculty_ids', []):
+                    if f_id in current_fac_ids:
+                        db.session.execute(course_faculty.insert().values(
+                            course_id=c.id, faculty_id=f_id, is_assistant=False
+                        ))
+                for f_id in getattr(c, 'assistant_faculty_ids', []):
+                    if f_id in current_fac_ids:
+                        db.session.execute(course_faculty.insert().values(
+                            course_id=c.id, faculty_id=f_id, is_assistant=True
+                        ))
+                for b_id in getattr(c, 'lab_batches', []):
+                    if b_id in current_batch_ids:
+                        db.session.execute(course_lab_batches.insert().values(
+                            course_id=c.id, batch_id=b_id
+                        ))
+
+            # 10. Publication
+            pub = app_data.get('publishing')
+            db_pub = db.session.query(DBTimetablePublication).filter_by(academic_term_id=active_term_id).first()
+            if pub:
+                if not db_pub:
+                    db.session.add(DBTimetablePublication(
+                        academic_term_id=active_term_id,
+                        status=pub.get('status', 'DRAFT'),
+                        is_published=pub.get('is_published', False),
+                        published_at=pub.get('published_at'),
+                        term_name=pub.get('term')
+                    ))
+                else:
+                    db_pub.status = pub.get('status', db_pub.status)
+                    db_pub.is_published = pub.get('is_published', db_pub.is_published)
+                    db_pub.published_at = pub.get('published_at', db_pub.published_at)
+                    db_pub.term_name = pub.get('term', db_pub.term_name)
+            elif db_pub:
+                db_pub.is_published = False
+                db_pub.status = 'DRAFT'
+
+            # 11. Timetable Assignments
+            res = app_data.get('result')
+            if res and res.get('assignments_data'):
+                db.session.query(DBTimetableAssignment).filter_by(academic_term_id=active_term_id).delete()
+                for a in res['assignments_data']:
+                    session_id = a.get('session_id', '')
+                    # Resolve course and section
+                    c_id = None
+                    s_id = None
+                    for course_id in current_course_ids:
+                        if session_id.startswith(course_id):
+                            c_id = course_id
+                            break
+                    for section_id in current_sec_ids:
+                        if f"_{section_id}_" in session_id or session_id.endswith(f"_{section_id}"):
+                            s_id = section_id
+                            break
+
+                    db.session.add(DBTimetableAssignment(
+                        academic_term_id=active_term_id,
+                        session_id=session_id,
+                        course_id=c_id,
+                        section_id=s_id,
+                        day=a.get('day'),
+                        start_slot_index=int(a.get('start_slot_index', 0)),
+                        duration_slots=int(a.get('duration_slots', 1)),
+                        room_id=a.get('room_id'),
+                        variant_index=0
+                    ))
+
+                # Schedule Version
+                soft_score = None
+                raw_soft = res.get('soft_score')
+                if isinstance(raw_soft, dict):
+                    soft_score = float(raw_soft.get('percentage', raw_soft.get('total_score', 0.0)))
+                elif isinstance(raw_soft, (int, float)):
+                    soft_score = float(raw_soft)
+
+                db.session.add(DBScheduleVersion(
+                    academic_term_id=active_term_id,
+                    version_tag=datetime.now(timezone.utc).strftime('v%Y%m%d_%H%M%S'),
+                    note='Generated or updated schedule',
+                    soft_score=soft_score,
+                    assignments_json=json.dumps(res['assignments_data']),
+                    result_json=json.dumps(res)
+                ))
+            elif res is None:
+                db.session.query(DBTimetableAssignment).filter_by(academic_term_id=active_term_id).delete()
+
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error persisting to relational database: {e}")
+
+        # Also maintain database.json as backup
+        _save_json_backup(app_data)
+
+def _save_json_backup(app_data):
+    """Write backup copy to database.json."""
+    try:
         data = {
             'config': app_data['config'].to_dict() if app_data.get('config') else None,
             'rooms': [r.to_dict() for r in app_data.get('rooms', [])],
@@ -61,56 +641,47 @@ def save_data(app_data):
         with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         os.replace(temp_file, DB_FILE)
+    except Exception as e:
+        print(f"JSON backup write error: {e}")
 
-def load_data(app_data):
-    """Load from JSON file into app_data."""
-    with _lock:
-        if not os.path.exists(DB_FILE):
-            app_data.setdefault('terms', [t for t in DEFAULT_TERMS])
-            app_data.setdefault('departments', [d for d in DEFAULT_DEPARTMENTS])
-            app_data.setdefault('active_term_id', 'term_2026_fall')
-            app_data.setdefault('users', get_default_users())
-            return
+def update_assignment_in_db(academic_term_id: str, session_id: str, day: str, start_slot_index: int, room_id: str):
+    """Atomically update an assignment record in the database."""
+    with _lock, db_context():
+        assignment = db.session.query(DBTimetableAssignment).filter_by(
+            academic_term_id=academic_term_id, session_id=session_id
+        ).first()
+        if assignment:
+            assignment.day = day
+            assignment.start_slot_index = start_slot_index
+            assignment.room_id = room_id
+            db.session.commit()
+            return True
+        return False
+
+def swap_assignments_in_db(academic_term_id: str, session_id_1: str, move_1: dict, session_id_2: str, move_2: dict):
+    """Atomically swap two assignments in the database with rollback protection."""
+    with _lock, db_context():
         try:
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            if data.get('config'):
-                app_data['config'] = WorkingConfig.from_dict(data['config'])
-            app_data['rooms'] = [Room.from_dict(d) for d in data.get('rooms', [])]
-            app_data['faculty'] = [Faculty.from_dict(d) for d in data.get('faculty', [])]
-            app_data['sections'] = [Section.from_dict(d) for d in data.get('sections', [])]
-            app_data['batches'] = [Batch.from_dict(d) for d in data.get('batches', [])]
-            app_data['courses'] = [Course.from_dict(d) for d in data.get('courses', [])]
-            app_data['publishing'] = data.get('publishing')
-            app_data['result'] = data.get('result')
+            a1 = db.session.query(DBTimetableAssignment).filter_by(
+                academic_term_id=academic_term_id, session_id=session_id_1
+            ).first()
+            a2 = db.session.query(DBTimetableAssignment).filter_by(
+                academic_term_id=academic_term_id, session_id=session_id_2
+            ).first()
 
-            loaded_terms = [AcademicTerm.from_dict(d) for d in data.get('terms', [])]
-            app_data['terms'] = loaded_terms if loaded_terms else [t for t in DEFAULT_TERMS]
+            if not a1 or not a2:
+                return False
 
-            loaded_depts = [Department.from_dict(d) for d in data.get('departments', [])]
-            app_data['departments'] = loaded_depts if loaded_depts else [d for d in DEFAULT_DEPARTMENTS]
+            a1.day = move_1['day']
+            a1.start_slot_index = move_1['start_slot_index']
+            a1.room_id = move_1['room_id']
 
-            loaded_term_id = data.get('active_term_id', 'term_2026_fall')
-            app_data['active_term_id'] = loaded_term_id if isinstance(loaded_term_id, str) and loaded_term_id else 'term_2026_fall'
+            a2.day = move_2['day']
+            a2.start_slot_index = move_2['start_slot_index']
+            a2.room_id = move_2['room_id']
 
-            loaded_users = [User.from_dict(d) for d in data.get('users', [])]
-            app_data['users'] = loaded_users if loaded_users else get_default_users()
-
-            if app_data.get('result') and app_data.get('config') and app_data['result'].get('assignments_data'):
-                try:
-                    from scheduler import SchedulingEngine
-                    eng = SchedulingEngine(
-                        app_data['config'],
-                        app_data['courses'],
-                        app_data['rooms'],
-                        app_data['faculty'],
-                        app_data['sections'],
-                        app_data['batches']
-                    )
-                    eng.load_assignments_data(app_data['result']['assignments_data'])
-                    app_data['engine'] = eng
-                except Exception as e:
-                    print(f"Engine restore warning in load_data: {e}")
+            db.session.commit()
+            return True
         except Exception as e:
-            print(f"Error loading database: {e}")
+            db.session.rollback()
+            raise e

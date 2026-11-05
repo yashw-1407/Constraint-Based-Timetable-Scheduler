@@ -80,10 +80,12 @@ class Room:
 class Faculty:
     id: str
     name: str
+    available_days: Optional[List[str]] = None
+    unavailable_slots: Optional[List[Dict[str, Any]]] = None
 
     def to_dict(self): return asdict(self)
     @classmethod
-    def from_dict(cls, d): return cls(**d)
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 @dataclass
 class Section:
