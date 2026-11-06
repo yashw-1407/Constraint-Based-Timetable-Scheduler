@@ -246,7 +246,14 @@ document.getElementById('btn-clear-data').addEventListener('click', async () => 
 async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
     try {
         const data = await fetchJSON(endpoint);
-        const tbody = document.querySelector(`#${tableId} tbody`);
+        const tbody = document.querySelector(`#${tableId} tbody`) || 
+                      document.getElementById(`${tableId}-tbody`) || 
+                      document.getElementById(tableId) ||
+                      document.getElementById(`${tableId.replace('table-', '')}-tbody`);
+        if (!tbody) {
+            console.warn(`tbody element not found for ${tableId}`);
+            return data;
+        }
         tbody.innerHTML = '';
         data.forEach(item => {
             const tr = document.createElement('tr');
@@ -261,14 +268,15 @@ async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
             });
             const actionTd = document.createElement('td');
             const editBtn = document.createElement('button');
-            editBtn.className = 'btn';
-            editBtn.style.marginRight = '5px';
+            editBtn.className = 'btn btn-outline btn-sm';
+            editBtn.style.marginRight = 'var(--space-2xs)';
             editBtn.textContent = 'Edit';
             editBtn.onclick = () => editItem(endpoint, item);
             actionTd.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
+            delBtn.className = 'btn btn-outline btn-sm';
+            delBtn.style.color = 'var(--color-error)';
             delBtn.textContent = 'Delete';
             delBtn.onclick = () => deleteItem(endpoint, item[rowIdKey], () => loadTableData(endpoint, tableId, columns, rowIdKey));
             actionTd.appendChild(delBtn);
@@ -276,7 +284,9 @@ async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
             tbody.appendChild(tr);
         });
         return data;
-    } catch (e) { }
+    } catch (e) {
+        console.warn('loadTableData error:', e);
+    }
 }
 
 async function deleteItem(endpoint, id, callback) {
@@ -345,45 +355,57 @@ document.getElementById('form-faculty').addEventListener('submit', async (e) => 
 async function loadSections() {
     try {
         const sections = await fetchJSON('/api/sections');
-        const tbody = document.querySelector('#table-sections tbody');
-        tbody.innerHTML = '';
-        sections.forEach(s => {
-            const tr = document.createElement('tr');
-            ['id', 'name', 'semester', 'division', 'strength'].forEach(col => {
-                const td = document.createElement('td');
-                td.textContent = s[col] !== null && s[col] !== undefined ? s[col] : '';
-                tr.appendChild(td);
+        const tbody = document.querySelector('#table-sections tbody') || 
+                      document.getElementById('sections-tbody') ||
+                      document.querySelector('#sections tbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            sections.forEach(s => {
+                const tr = document.createElement('tr');
+                ['id', 'name', 'semester', 'division', 'strength'].forEach(col => {
+                    const td = document.createElement('td');
+                    td.textContent = s[col] !== null && s[col] !== undefined ? s[col] : '';
+                    tr.appendChild(td);
+                });
+                // Batches column
+                const batchesTd = document.createElement('td');
+                if (s.batches && s.batches.length > 0) {
+                    const batchList = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ');
+                    batchesTd.innerHTML = batchList;
+                } else {
+                    batchesTd.textContent = 'None';
+                }
+                tr.appendChild(batchesTd);
+                // Actions
+                const actionTd = document.createElement('td');
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-outline btn-sm';
+                delBtn.style.color = 'var(--color-error)';
+                delBtn.textContent = 'Delete';
+                delBtn.onclick = async () => {
+                    if (!confirm('Delete section and its batches?')) return;
+                    await fetchJSON(`/api/sections/${s.id}`, { method: 'DELETE' });
+                    showNotification('Section deleted');
+                    loadSections();
+                };
+                actionTd.appendChild(delBtn);
+                tr.appendChild(actionTd);
+                tbody.appendChild(tr);
             });
-            // Batches column
-            const batchesTd = document.createElement('td');
-            if (s.batches && s.batches.length > 0) {
-                const batchList = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ');
-                batchesTd.innerHTML = batchList;
-            } else {
-                batchesTd.textContent = 'None';
-            }
-            tr.appendChild(batchesTd);
-            // Actions
-            const actionTd = document.createElement('td');
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
-            delBtn.textContent = 'Delete';
-            delBtn.onclick = async () => {
-                if (!confirm('Delete section and its batches?')) return;
-                await fetchJSON(`/api/sections/${s.id}`, { method: 'DELETE' });
-                showNotification('Section deleted');
-                loadSections();
-            };
-            actionTd.appendChild(delBtn);
-            tr.appendChild(actionTd);
-            tbody.appendChild(tr);
-        });
+        }
+
+        // Also populate the sub-batches table
+        await loadTableData('/api/batches', 'table-batches', ['id', 'name', 'section_id', 'strength']);
 
         // Populate batch section dropdown
         const batchSecSelect = document.getElementById('batch_section');
-        batchSecSelect.innerHTML = '<option value="">Select Section</option>';
-        sections.forEach(s => batchSecSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`);
-    } catch (e) { }
+        if (batchSecSelect) {
+            batchSecSelect.innerHTML = '<option value="">Select Section</option>';
+            sections.forEach(s => batchSecSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+        }
+    } catch (e) {
+        console.warn('loadSections error:', e);
+    }
 }
 
 document.getElementById('form-section').addEventListener('submit', async (e) => {
@@ -1151,6 +1173,18 @@ document.getElementById('btn-unpublish-schedule')?.addEventListener('click', asy
     }
 });
 
+document.getElementById('btn-header-snapshot')?.addEventListener('click', () => {
+    openVersionHistoryModal();
+});
+
+document.getElementById('btn-export-excel')?.addEventListener('click', () => {
+    window.location.href = '/api/export/excel';
+});
+
+document.getElementById('btn-print')?.addEventListener('click', () => {
+    window.print();
+});
+
 // Schedule Version History & Snapshots Controller
 const modalVersionHistory = document.getElementById('modal-version-history');
 const btnVersionHistory = document.getElementById('btn-version-history');
@@ -1388,8 +1422,8 @@ function renderReportTab() {
                             <td>${r.occupied_slots} / ${r.total_slots}</td>
                             <td>
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div style="flex: 1; height: 8px; background: var(--color-surface-subtle); border-radius: 4px; overflow: hidden; max-width: 120px;">
-                                        <div style="width: ${Math.min(100, r.utilization_pct)}%; height: 100%; background: ${r.utilization_pct > 70 ? 'var(--color-warning)' : 'var(--color-brand-primary)'};"></div>
+                                    <div style="flex: 1; height: 8px; background: var(--color-paper-2); border-radius: 4px; overflow: hidden; max-width: 120px;">
+                                        <div style="width: ${Math.min(100, r.utilization_pct)}%; height: 100%; background: ${r.utilization_pct > 70 ? 'var(--color-warning)' : 'var(--color-accent)'};"></div>
                                     </div>
                                     <span style="font-weight: 600;">${r.utilization_pct}%</span>
                                 </div>
@@ -1958,6 +1992,114 @@ function updateAuthHeaderUI() {
         btn.textContent = 'Sign In';
         btn.onclick = openAuthModal;
     }
+
+    applyRoleView();
+}
+
+function applyRoleView() {
+    const landing = document.getElementById('landing-section');
+    const faculty = document.getElementById('faculty-dashboard-section');
+    const workbench = document.getElementById('workbench-section');
+    const wbNav = document.getElementById('nav-link-workbench');
+
+    if (!currentUser) {
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Workbench';
+            wbNav.href = '#workbench-section';
+        }
+        return;
+    }
+
+    if (currentUser.role === 'FACULTY') {
+        if (landing) landing.style.display = 'none';
+        if (workbench) workbench.style.display = 'none';
+        if (faculty) faculty.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Faculty Dashboard';
+            wbNav.href = '#faculty-dashboard-section';
+        }
+        loadFacultyDashboard();
+    } else if (currentUser.role === 'STUDENT') {
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'none';
+        if (wbNav) {
+            wbNav.style.display = 'none';
+        }
+    } else {
+        // ADMIN or COORDINATOR
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Workbench';
+            wbNav.href = '#workbench-section';
+        }
+    }
+}
+
+async function loadFacultyDashboard() {
+    try {
+        const res = await fetch('/api/faculty/me/schedule');
+        const title = document.getElementById('faculty-welcome-title');
+        const hours = document.getElementById('faculty-workload-hours');
+        const count = document.getElementById('faculty-course-count');
+        const names = document.getElementById('faculty-course-names');
+        const icsDisplay = document.getElementById('faculty-ics-url-display');
+        const btnIcs = document.getElementById('btn-faculty-ics');
+        const container = document.getElementById('faculty-personal-timetable-container');
+
+        if (!res.ok) {
+            if (res.status === 404) {
+                if (title) title.textContent = `Faculty Profile: ${currentUser.name || currentUser.username}`;
+                if (hours) hours.textContent = '0.0 hrs';
+                if (count) count.textContent = 'Unlinked Account';
+                if (names) names.textContent = 'No faculty record is linked to your user account. Contact your administrator.';
+                if (container) container.innerHTML = '<p class="form-hint">Unlinked account: no personal schedule available.</p>';
+            }
+            return;
+        }
+
+        const data = await res.json();
+        const fac = data.faculty || {};
+        const courses = data.courses || [];
+        const sessions = data.sessions || [];
+
+        if (title) title.textContent = `Faculty Schedule: ${fac.name || currentUser.name}`;
+        if (hours) hours.textContent = `${fac.weekly_contact_hours || 0} hrs`;
+        if (count) count.textContent = `${courses.length} course${courses.length === 1 ? '' : 's'}`;
+        if (names) names.textContent = courses.map(c => `${c.code} (${c.name})`).join(', ') || 'No courses assigned';
+
+        const icsUrl = fac.calendar_ics_url ? (window.location.origin + fac.calendar_ics_url) : '';
+        if (icsDisplay) icsDisplay.value = icsUrl;
+        if (btnIcs) {
+            btnIcs.onclick = () => {
+                if (fac.calendar_ics_url) window.open(fac.calendar_ics_url, '_blank');
+            };
+        }
+
+        if (container) {
+            if (sessions.length === 0) {
+                container.innerHTML = '<p class="form-hint">No timetable sessions scheduled for your courses in the active term yet.</p>';
+            } else {
+                let html = '<table class="data-table"><thead><tr><th>Day</th><th>Slot / Period</th><th>Course</th><th>Section</th><th>Room</th></tr></thead><tbody>';
+                sessions.forEach(s => {
+                    const slotText = s.time_start ? `${s.time_start} - ${s.time_end || ''}` : `Slot ${(s.start_slot_index || 0) + 1}`;
+                    html += `<tr><td>${s.day}</td><td>${slotText}</td><td><strong>${s.course_code}</strong>: ${s.course_name}</td><td>${s.section_name}</td><td>${s.room_name}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load faculty dashboard:', e);
+    }
 }
 
 async function handleSignOut() {
@@ -2081,3 +2223,16 @@ function initAuthModal() {
 initImportModal();
 initMoveModal();
 initAuthModal();
+
+// Commercial landing page hero action
+document.getElementById('btn-hero-launch-workbench')?.addEventListener('click', () => {
+    const wb = document.getElementById('workbench-section');
+    const fac = document.getElementById('faculty-dashboard-section');
+    if (currentUser && currentUser.role === 'FACULTY' && fac) {
+        fac.scrollIntoView({ behavior: 'smooth' });
+    } else if (wb) {
+        wb.scrollIntoView({ behavior: 'smooth' });
+        const configTab = document.querySelector('.tab-btn[data-target="config"]');
+        if (configTab) configTab.click();
+    }
+});

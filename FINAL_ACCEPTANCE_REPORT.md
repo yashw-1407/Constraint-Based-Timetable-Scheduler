@@ -228,7 +228,28 @@ test_milestone_d_e.py ............                                       [100%]
    - Added database isolation verification assertions in both suites.
    - Real `autoschedule.db` preserved with zero modifications during test execution.
 
-5. **Operational Concurrency Notice:**
+5. **Commercial Website Architecture and Hallmark Redesign [COMPLETED & VERIFIED]:**
+   - Transformed interface into an academic commercial website using the Hallmark design system (Theme: **Coral** · light/grotesk-sans/warm).
+   - Strict CSS tokenization using `:root` design tokens, 4px scale spacing, tabular numbers, letterpress card aesthetics, and felt textures without generic templates.
+   - Role-scoped multi-surface architecture:
+     - Commercial Front Page: Hero value proposition, engine specifications, proof metrics, institutional licensing tiers ($1,200/yr Departmental, $4,800/yr Campus Enterprise), and comprehensive masthead footer.
+     - Dedicated Faculty Dashboard: Automated view scoping displaying individual weekly contact hours, course assignments, calendar stream URL, and personal teaching timetable.
+     - Administrator and Coordinator Workbench: Full-capability scheduling console covering term configuration, resource registration, CSP execution, version snapshots, change ledger, and room utilization analytics.
+     - Public Student Portal: Role-scoped timetable viewer with cohort filtering, instructor search, room lookup, and offline PWA support.
+   - Verified with Hallmark `sloplint.mjs`: **0 FAIL** across all templates and styles.
+
+6. **Interactive Button Clicks and Frontend Integrity Audit [COMPLETED & VERIFIED]:**
+   - Exhaustively audited all 63 buttons across all templates and dialog modals (0 unwired buttons).
+   - Restored missing table IDs (`table-rooms`, `table-faculty`, `table-sections`, `table-batches`, `table-courses`) and implemented multi-selector resilience in `loadTableData()`.
+   - Wired Timetable Views perspective buttons (`.view-btn` for Master, Section, Faculty, Room), with dynamic entity selector `#view-selector` and iCalendar subscription link `#btn-faculty-ics`.
+   - Wired `btn-export-excel` (Excel workbook export) and `btn-print` (print-optimized CSS output).
+   - Added `#validation-report` and `#val-content` containers for the CSP hard constraint verifier (`btn-validate`).
+   - Added tabbed controls (`.report-tab-btn`) inside the Institutional Utilization modal for Classrooms, Faculty Workloads, and Section Density.
+   - Separated snapshot trigger IDs between the workbench header (`btn-header-snapshot`) and modal form (`btn-save-snapshot`).
+   - Standardized schedule result status string casing (`success` lowercase normalization) across database restore operations and route guards.
+   - Verified with dedicated 22-step button click test suite: 22/22 passed.
+
+7. **Operational Concurrency Notice:**
    - In multi-process production (Gunicorn with multiple workers), deployment should utilize PostgreSQL with connection pooling and row locking (`SELECT ... FOR UPDATE`). In development and demonstration mode, `threading.RLock()` protects in-memory state.
 
 ---

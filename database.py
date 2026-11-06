@@ -819,7 +819,7 @@ def restore_schedule_version(version_id: int, app_data: dict):
                 except Exception:
                     pass
 
-            result_dict['status'] = 'SUCCESS'
+            result_dict['status'] = 'success'
             result_dict['assignments_data'] = assignments_data
             if snapshot.soft_score is not None and 'soft_score' not in result_dict:
                 result_dict['soft_score'] = {'total_score': snapshot.soft_score}

@@ -6,137 +6,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Campus public timetable portal for viewing institutional academic schedules.">
     <title>AutoSchedule: Campus Timetable Portal</title>
+    <link rel="stylesheet" href="/static/tokens.css">
+    <link rel="stylesheet" href="/static/base.css">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="manifest" href="/manifest.json">
-    <style>/* Hallmark: 2.0.0 */
-        html, body {
-            overflow-x: clip;
-        }
-
-        :focus-visible {
-            outline: 2px solid var(--color-brand-primary);
-            outline-offset: 2px;
-        }
-
-        button:active, a.btn:active {
-            transform: translateY(1px);
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .portal-header {
-            background-color: var(--color-header-bg);
-            border-bottom: 1px solid var(--color-header-border);
-            padding: var(--space-4) var(--space-6);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: var(--space-4);
-            flex-wrap: wrap;
-        }
-
-        .portal-brand {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-        }
-
-        .portal-title-wrap h1 {
-            color: var(--color-header-text);
-            font-size: 1.25rem;
-            font-weight: 700;
-            margin: 0;
-            line-height: 1.2;
-            text-wrap: balance;
-        }
-
-        .portal-subtitle {
-            color: var(--color-text-secondary);
-            font-size: 12px;
-            margin: 0;
-        }
-
-        .portal-nav-actions {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            flex-wrap: wrap;
-        }
-
-        .portal-main {
-            max-width: 1360px;
-            margin: 0 auto;
-            padding: var(--space-6) var(--space-4);
-        }
-
-        .portal-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: var(--space-4);
-            flex-wrap: wrap;
-            margin-bottom: var(--space-4);
-        }
-
-        .portal-filter-group {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            flex-wrap: wrap;
-        }
-
-        .portal-search-input {
-            max-width: 260px;
-            width: 100%;
-        }
-
-        .portal-notice-banner {
-            margin-bottom: var(--space-4);
-            padding: var(--space-3) var(--space-4);
-            border-radius: var(--radius-md);
-            font-size: 12.5px;
-            display: none;
-        }
-
-        .notice-draft {
-            background-color: var(--color-warning-bg);
-            border: 1px solid var(--color-warning-border);
-            color: var(--color-warning);
-        }
-
-        .notice-published {
-            background-color: var(--color-success-bg);
-            border: 1px solid var(--color-success-border);
-            color: var(--color-success);
-        }
+    <style>
+        /* Hallmark: 2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active, .btn:active, a[role="button"]:active { transform: translateY(1px); }
+        button:disabled, .btn:disabled, input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
     </style>
 </head>
 
 <body>
 
-    <header class="portal-header">
-        <div class="portal-brand">
-            <div class="brand-mark">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <header class="app-header">
+        <div class="container header-inner">
+            <a href="/" class="header-brand">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                     <line x1="16" y1="2" x2="16" y2="6"></line>
                     <line x1="8" y1="2" x2="8" y2="6"></line>
                     <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-            </div>
-            <div class="portal-title-wrap">
-                <h1>Campus Timetable Portal</h1>
-                <p class="portal-subtitle">Institutional Academic Schedule Directory</p>
-            </div>
-        </div>
+                <div class="header-text">
+                    <h1>AutoSchedule Portal</h1>
+                    <span class="header-subtitle">Institutional Academic Schedule Directory</span>
+                </div>
+            </a>
 
-        <div class="portal-nav-actions">
-            <select id="portal-term-select" class="header-term-selector" aria-label="Academic Term"></select>
-            <span id="portal-status-chip" class="lifecycle-chip chip-draft">Draft</span>
-            <a href="/" class="btn btn-outline btn-sm">Admin Console</a>
+            <div class="portal-nav-actions">
+                <select id="portal-term-select" class="header-term-selector" aria-label="Academic Term"></select>
+                <span id="portal-status-chip" class="lifecycle-chip chip-draft">Draft</span>
+                <a href="/" class="btn btn-outline btn-sm">Scheduling Console</a>
+            </div>
         </div>
     </header>
 
@@ -160,7 +64,7 @@
 
             <div class="actions">
                 <input type="text" id="portal-search-box" class="portal-search-input" placeholder="Search subject, faculty, room…" aria-label="Search timetable">
-                <a id="portal-btn-ics" class="btn btn-outline btn-sm" style="display: none; text-decoration: none;" target="_blank">Subscribe Calendar (.ics)</a>
+                <a id="portal-btn-ics" class="btn btn-outline btn-sm" style="display: none; text-decoration: none; white-space: nowrap;" target="_blank">Subscribe Calendar (.ics)</a>
                 <a href="/api/export/excel" class="btn btn-primary btn-sm" download>Export Excel</a>
                 <button type="button" class="btn btn-outline btn-sm" onclick="window.print()">Print</button>
             </div>
@@ -173,6 +77,38 @@
         </div>
 
     </main>
+
+    <!-- Commercial Site Footer -->
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="footer-brand">
+                <h2>AutoSchedule</h2>
+                <p>Enterprise academic timetable scheduler powered by pure-Python constraint satisfaction problem (CSP) heuristics.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h5>Platform</h5>
+                    <ul>
+                        <li><a href="/">Overview</a></li>
+                        <li><a href="/">Scheduling Workbench</a></li>
+                        <li><a href="/portal">Student Portal</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Data Feeds</h5>
+                    <ul>
+                        <li><a href="/api/export/excel">Excel Export</a></li>
+                        <li><a href="/api/timetable/master">Master JSON</a></li>
+                        <li><a href="/api/timetable/status">Term Status</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-meta">
+                <span>&copy; 2026 AutoSchedule Academic Systems.</span>
+                <span>Deterministic CSP Solver · RFC 5545 iCalendar Feeds</span>
+            </div>
+        </div>
+    </footer>
 
     <script>
         (function () {
@@ -466,7 +402,7 @@
                                     (s.room_name && s.room_name.toLowerCase().includes(query))
                                 );
 
-                                const highlightStyle = matches ? 'border: 2px solid var(--color-brand-primary);' : '';
+                                const highlightStyle = matches ? 'outline: 2px solid var(--color-focus); outline-offset: 1px;' : '';
 
                                 return `
                                     <div class="tt-session-card" style="${highlightStyle}">

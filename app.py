@@ -847,7 +847,7 @@ def get_master_timetable():
 
     engine = _get_or_restore_engine()
     result = app_data.get('result')
-    if not engine or not result or result.get('status') not in ('success', 'partial'):
+    if not engine or not result or str(result.get('status', '')).lower() not in ('success', 'partial'):
         return jsonify({'error': 'Timetable not generated or failed'}), 400
     return jsonify(engine._format_assignments())
 
@@ -887,7 +887,7 @@ def _get_view(view_type, entity_id):
 
     engine = _get_or_restore_engine()
     result = app_data.get('result')
-    if not engine or not result or result.get('status') not in ('success', 'partial'):
+    if not engine or not result or str(result.get('status', '')).lower() not in ('success', 'partial'):
         return jsonify({'error': 'Timetable not generated or failed'}), 400
 
     if view_type == 'section':
@@ -906,7 +906,7 @@ def _get_view(view_type, entity_id):
 def select_variant(index):
     engine = _get_or_restore_engine()
     result = app_data.get('result')
-    if not engine or not result or result.get('status') not in ('success', 'partial'):
+    if not engine or not result or str(result.get('status', '')).lower() not in ('success', 'partial'):
         return jsonify({'error': 'No generated timetable found'}), 400
         
     variants = result.get('variants', [])
@@ -930,7 +930,7 @@ def select_variant(index):
 @app.route('/api/timetable/metadata', methods=['GET'])
 def get_metadata():
     result = app_data.get('result')
-    if not result or result.get('status') not in ('success', 'partial'):
+    if not result or str(result.get('status', '')).lower() not in ('success', 'partial'):
         return jsonify({'error': 'No valid timetable'}), 400
     variants = result.get('variants', [])
     active_idx = result.get('active_variant_index', 0)
@@ -1505,7 +1505,7 @@ def validate_current_timetable():
     """Post-generation validation: re-check all hard constraints."""
     engine = _get_or_restore_engine()
     result = app_data.get('result')
-    if not engine or not result or result.get('status') not in ('success', 'partial'):
+    if not engine or not result or str(result.get('status', '')).lower() not in ('success', 'partial'):
         return jsonify({'error': 'No valid timetable to validate'}), 400
 
     validation = validate_timetable(
