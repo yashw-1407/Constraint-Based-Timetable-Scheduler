@@ -9,6 +9,48 @@ class RoomType:
     THEORY_ROOM = "THEORY_ROOM"
     LAB = "LAB"
 
+class UserRole:
+    ADMIN = "ADMIN"
+    COORDINATOR = "COORDINATOR"
+    FACULTY = "FACULTY"
+    STUDENT = "STUDENT"
+
+@dataclass
+class User:
+    id: str
+    username: str
+    password_hash: str
+    salt: str
+    role: str
+    name: str
+    faculty_id: Optional[str] = None
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+@dataclass
+class AcademicTerm:
+    id: str
+    name: str
+    academic_year: str
+    semester_type: str = "ODD"
+    is_active: bool = False
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+@dataclass
+class Department:
+    id: str
+    name: str
+    code: str
+
+    def to_dict(self): return asdict(self)
+    @classmethod
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 @dataclass
 class WorkingConfig:
     working_days: List[str]
@@ -39,10 +81,12 @@ class Room:
 class Faculty:
     id: str
     name: str
+    available_days: Optional[List[str]] = None
+    unavailable_slots: Optional[List[Dict[str, Any]]] = None
 
     def to_dict(self): return asdict(self)
     @classmethod
-    def from_dict(cls, d): return cls(**d)
+    def from_dict(cls, d): return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 @dataclass
 class Section:

@@ -1,5 +1,15 @@
 const API_BASE = '';
 
+// CSRF Token Management
+let currentCsrfToken = '';
+
+function getCsrfToken() {
+    if (currentCsrfToken) return currentCsrfToken;
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+    return '';
+}
+
 // Notification system
 function showNotification(message, type = 'success') {
     const notif = document.getElementById('notification');
@@ -12,15 +22,25 @@ function showNotification(message, type = 'success') {
 
 async function fetchJSON(url, options = {}) {
     try {
+        const method = (options.method || 'GET').toUpperCase();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        const csrf = getCsrfToken();
+        if (csrf && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            headers['X-CSRF-Token'] = csrf;
+        }
+
         const response = await fetch(url, {
             ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
+            headers
         });
         const data = await response.json();
         if (!response.ok) {
+            if (response.status === 401) {
+                openAuthModal();
+            }
             throw new Error(data.message || data.error || `HTTP error! status: ${response.status}`);
         }
         return data;
@@ -43,10 +63,60 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         e.target.classList.add('active');
         const targetId = e.target.getAttribute('data-target');
         document.getElementById(targetId).classList.add('active');
+        window.location.hash = targetId;
         
         loadTabData(targetId);
     });
 });
+
+window.addEventListener('DOMContentLoaded', () => {
+    initImportModal();
+    initMoveModal();
+    initAuthModal();
+    checkAuthStatus();
+    fetchTerms();
+    fetchPublishingStatus();
+    const hash = (window.location.hash || '').replace('#', '');
+    if (hash) {
+        const btn = document.querySelector(`.tab-btn[data-target="${hash}"]`);
+        if (btn) {
+            btn.click();
+        } else {
+            loadTabData('config');
+        }
+    } else {
+        loadTabData('config');
+    }
+});
+
+// Academic Terms Management
+async function fetchTerms() {
+    try {
+        const res = await fetch('/api/terms');
+        if (!res.ok) return;
+        const data = await res.json();
+        const selector = document.getElementById('header-term-select');
+        if (!selector) return;
+
+        selector.innerHTML = (data.terms || []).map(t =>
+            `<option value="${t.id}" ${t.id === data.active_term_id ? 'selected' : ''}>${t.name}</option>`
+        ).join('');
+
+        selector.onchange = async (e) => {
+            const termId = e.target.value;
+            try {
+                const actRes = await fetchJSON(`/api/terms/activate/${termId}`, { method: 'POST' });
+                showNotification(`Active semester set to ${actRes.active_term ? actRes.active_term.name : termId}`, 'info');
+                fetchPublishingStatus();
+                loadTimetableViewsInit();
+            } catch (err) {
+                showNotification('Failed to switch academic term', 'error');
+            }
+        };
+    } catch (e) {
+        console.warn('Could not load terms:', e);
+    }
+}
 
 // Load data based on tab
 function loadTabData(tabId) {
@@ -128,16 +198,23 @@ document.getElementById('form-config').addEventListener('submit', async (e) => {
 });
 
 async function loadTimeSlots() {
+    const list = document.getElementById('time-slots-list');
+    if (!list) return;
     try {
         const slots = await fetchJSON('/api/time-slots');
-        const list = document.getElementById('time-slots-list');
         list.innerHTML = '';
-        slots.forEach(slot => {
-            const li = document.createElement('li');
-            li.textContent = `Slot ${slot.index}: ${slot.start_time} - ${slot.end_time}`;
-            list.appendChild(li);
-        });
-    } catch (e) { }
+        if (Array.isArray(slots) && slots.length > 0) {
+            slots.forEach(slot => {
+                const li = document.createElement('li');
+                li.textContent = `Slot ${slot.index}: ${slot.start_time} - ${slot.end_time}`;
+                list.appendChild(li);
+            });
+        } else {
+            list.innerHTML = '<li style="color: var(--color-text-secondary); list-style: none;">No time slots configured. Set hours above and click Save Configuration.</li>';
+        }
+    } catch (e) {
+        list.innerHTML = '<li style="color: var(--color-text-secondary); list-style: none;">No configuration saved yet.</li>';
+    }
 }
 
 document.getElementById('btn-load-demo').addEventListener('click', async () => {
@@ -148,7 +225,12 @@ document.getElementById('btn-load-demo').addEventListener('click', async () => {
             body: JSON.stringify({ scenario: scenario })
         });
         showNotification(res.message);
+        globalConfig = null;
         loadConfig();
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab && activeTab.getAttribute('data-target') !== 'config') {
+            loadTabData(activeTab.getAttribute('data-target'));
+        }
     } catch (e) { }
 });
 document.getElementById('btn-clear-data').addEventListener('click', async () => {
@@ -164,7 +246,14 @@ document.getElementById('btn-clear-data').addEventListener('click', async () => 
 async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
     try {
         const data = await fetchJSON(endpoint);
-        const tbody = document.querySelector(`#${tableId} tbody`);
+        const tbody = document.querySelector(`#${tableId} tbody`) || 
+                      document.getElementById(`${tableId}-tbody`) || 
+                      document.getElementById(tableId) ||
+                      document.getElementById(`${tableId.replace('table-', '')}-tbody`);
+        if (!tbody) {
+            console.warn(`tbody element not found for ${tableId}`);
+            return data;
+        }
         tbody.innerHTML = '';
         data.forEach(item => {
             const tr = document.createElement('tr');
@@ -179,14 +268,15 @@ async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
             });
             const actionTd = document.createElement('td');
             const editBtn = document.createElement('button');
-            editBtn.className = 'btn';
-            editBtn.style.marginRight = '5px';
+            editBtn.className = 'btn btn-outline btn-sm';
+            editBtn.style.marginRight = 'var(--space-2xs)';
             editBtn.textContent = 'Edit';
             editBtn.onclick = () => editItem(endpoint, item);
             actionTd.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
+            delBtn.className = 'btn btn-outline btn-sm';
+            delBtn.style.color = 'var(--color-error)';
             delBtn.textContent = 'Delete';
             delBtn.onclick = () => deleteItem(endpoint, item[rowIdKey], () => loadTableData(endpoint, tableId, columns, rowIdKey));
             actionTd.appendChild(delBtn);
@@ -194,7 +284,9 @@ async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
             tbody.appendChild(tr);
         });
         return data;
-    } catch (e) { }
+    } catch (e) {
+        console.warn('loadTableData error:', e);
+    }
 }
 
 async function deleteItem(endpoint, id, callback) {
@@ -263,45 +355,57 @@ document.getElementById('form-faculty').addEventListener('submit', async (e) => 
 async function loadSections() {
     try {
         const sections = await fetchJSON('/api/sections');
-        const tbody = document.querySelector('#table-sections tbody');
-        tbody.innerHTML = '';
-        sections.forEach(s => {
-            const tr = document.createElement('tr');
-            ['id', 'name', 'semester', 'division', 'strength'].forEach(col => {
-                const td = document.createElement('td');
-                td.textContent = s[col] !== null && s[col] !== undefined ? s[col] : '';
-                tr.appendChild(td);
+        const tbody = document.querySelector('#table-sections tbody') || 
+                      document.getElementById('sections-tbody') ||
+                      document.querySelector('#sections tbody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            sections.forEach(s => {
+                const tr = document.createElement('tr');
+                ['id', 'name', 'semester', 'division', 'strength'].forEach(col => {
+                    const td = document.createElement('td');
+                    td.textContent = s[col] !== null && s[col] !== undefined ? s[col] : '';
+                    tr.appendChild(td);
+                });
+                // Batches column
+                const batchesTd = document.createElement('td');
+                if (s.batches && s.batches.length > 0) {
+                    const batchList = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ');
+                    batchesTd.innerHTML = batchList;
+                } else {
+                    batchesTd.textContent = 'None';
+                }
+                tr.appendChild(batchesTd);
+                // Actions
+                const actionTd = document.createElement('td');
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-outline btn-sm';
+                delBtn.style.color = 'var(--color-error)';
+                delBtn.textContent = 'Delete';
+                delBtn.onclick = async () => {
+                    if (!confirm('Delete section and its batches?')) return;
+                    await fetchJSON(`/api/sections/${s.id}`, { method: 'DELETE' });
+                    showNotification('Section deleted');
+                    loadSections();
+                };
+                actionTd.appendChild(delBtn);
+                tr.appendChild(actionTd);
+                tbody.appendChild(tr);
             });
-            // Batches column
-            const batchesTd = document.createElement('td');
-            if (s.batches && s.batches.length > 0) {
-                const batchList = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ');
-                batchesTd.innerHTML = batchList;
-            } else {
-                batchesTd.textContent = 'None';
-            }
-            tr.appendChild(batchesTd);
-            // Actions
-            const actionTd = document.createElement('td');
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
-            delBtn.textContent = 'Delete';
-            delBtn.onclick = async () => {
-                if (!confirm('Delete section and its batches?')) return;
-                await fetchJSON(`/api/sections/${s.id}`, { method: 'DELETE' });
-                showNotification('Section deleted');
-                loadSections();
-            };
-            actionTd.appendChild(delBtn);
-            tr.appendChild(actionTd);
-            tbody.appendChild(tr);
-        });
+        }
+
+        // Also populate the sub-batches table
+        await loadTableData('/api/batches', 'table-batches', ['id', 'name', 'section_id', 'strength']);
 
         // Populate batch section dropdown
         const batchSecSelect = document.getElementById('batch_section');
-        batchSecSelect.innerHTML = '<option value="">Select Section</option>';
-        sections.forEach(s => batchSecSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`);
-    } catch (e) { }
+        if (batchSecSelect) {
+            batchSecSelect.innerHTML = '<option value="">Select Section</option>';
+            sections.forEach(s => batchSecSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+        }
+    } catch (e) {
+        console.warn('loadSections error:', e);
+    }
 }
 
 document.getElementById('form-section').addEventListener('submit', async (e) => {
@@ -500,40 +604,48 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 
             statusCard.className = 'status-card success-card';
             statusText.innerHTML = `Timetable generated successfully!`;
-            statusText.style.color = 'var(--success)';
+            statusText.style.color = 'var(--color-success)';
             scoreDiv.style.display = 'block';
 
             let detailsHtml = '';
             if (bestVariant.soft_score && bestVariant.soft_score.details) {
-                detailsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+                detailsHtml = '<div class="score-details-list">' +
                     Object.entries(bestVariant.soft_score.details)
-                    .map(([k,v]) => `<span style="background:white;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:13px;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
+                    .map(([k,v]) => `<span class="score-chip">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
                     .join('') + '</div>';
             }
             scoreDiv.innerHTML = `
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                    <div style="font-size:1.4rem;font-weight:700;color:var(--success);">${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}% Quality</div>
-                    <div style="font-size:13px;color:var(--text-muted);">${stats.total_sessions || 0} sessions · ${stats.backtracks || 0} backtracks · ${stats.time_ms || 0}ms</div>
+                <div class="score-header-row">
+                    <div class="score-percent-value">${bestVariant.soft_score ? bestVariant.soft_score.percentage : 0}% Quality Score</div>
+                    <div class="score-meta-stats">${stats.total_sessions || 0} sessions | ${stats.backtracks || 0} backtracks | ${stats.time_ms || 0}ms</div>
                 </div>
                 ${detailsHtml}
             `;
 
-            // After 1.5s, prompt user to go to Views tab
+            const btnExport = document.getElementById('btn-export-excel');
+            if (btnExport) btnExport.style.display = 'inline-flex';
+            const btnPrint = document.getElementById('btn-print');
+            if (btnPrint) btnPrint.style.display = 'inline-block';
+            fetchPublishingStatus();
+
+            const varPanel = document.getElementById('variants-comparison-panel');
+            if (varPanel) varPanel.style.display = 'none';
+
             setTimeout(() => {
                 showNotification('Timetable ready! Switch to Timetable Views tab', 'success');
             }, 600);
 
         } else {
             statusCard.className = 'status-card error-card';
-            statusText.innerHTML = `Generation Failed — ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
-            statusText.style.color = 'var(--danger)';
+            statusText.innerHTML = `Generation Infeasible: ${(res.stats||{}).scheduled||0}/${(res.stats||{}).total_sessions||'?'} sessions scheduled`;
+            statusText.style.color = 'var(--color-danger)';
             diagDiv.style.display = 'block';
-            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message || 'Infeasible problem'}<br><pre style="font-size:12px;margin-top:8px;white-space:pre-wrap;">${res.diagnostics || ''}</pre>`;
+            diagDiv.innerHTML = `<strong>Diagnostic Conflict:</strong> ${res.message || 'Infeasible problem'}<br><pre class="diagnostics-pre">${res.diagnostics || ''}</pre>`;
         }
     } catch (e) {
         statusCard.className = 'status-card error-card';
         statusText.innerHTML = `Error: ${e.message}`;
-        statusText.style.color = 'var(--danger)';
+        statusText.style.color = 'var(--color-danger)';
     } finally {
         btn.disabled = false;
         btn.innerHTML = 'Generate Timetable';
@@ -544,13 +656,13 @@ document.getElementById('btn-validate').addEventListener('click', async () => {
     const reportDiv = document.getElementById('validation-report');
     const content = document.getElementById('val-content');
     reportDiv.style.display = 'block';
-    content.innerHTML = 'Validating...';
+    content.innerHTML = '<span class="val-pending">Validating configuration against hard constraints...</span>';
     try {
         const res = await fetchJSON('/api/validation');
         if (res.valid) {
-            content.innerHTML = '<span style="color:green;">All hard constraints satisfied. No conflicts found.</span>';
+            content.innerHTML = '<div class="val-success-banner">All hard constraints satisfied. No conflicts found.</div>';
         } else {
-            content.innerHTML = `<ul style="color:red;">${res.conflicts.map(c => `<li>${c}</li>`).join('')}</ul>`;
+            content.innerHTML = `<ul class="val-error-list">${res.conflicts.map(c => `<li>${c}</li>`).join('')}</ul>`;
         }
     } catch (e) { }
 });
@@ -570,35 +682,45 @@ async function fetchConfigForViews() {
 }
 
 function generateTimelineColumns(config, timeSlots) {
+    if (!config) return [];
     let columns = [];
     let breaks = [...(config.breaks || [])];
     if (config.lunch_start && config.lunch_end) {
         breaks.push({ start_time: config.lunch_start, end_time: config.lunch_end, is_lunch: true });
     }
-    breaks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    breaks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     
-    let sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    let safeSlots = Array.isArray(timeSlots) ? timeSlots : [];
+    let sortedSlots = [...safeSlots].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     
     let all_blocks = [];
     sortedSlots.forEach(s => all_blocks.push({ type: 'slot', ...s }));
     breaks.forEach(b => all_blocks.push({ type: 'break', ...b }));
     
-    all_blocks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    all_blocks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     return all_blocks;
 }
 
+let cachedMasterAssignments = [];
 async function fetchMasterAssignments() {
     const res = await fetch('/api/timetable/master');
     if (!res.ok) return null;
-    return await res.json();
+    cachedMasterAssignments = await res.json();
+    return cachedMasterAssignments;
 }
 
 function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlots) {
     const container = document.getElementById('view-content');
+    if (!container) return;
     container.innerHTML = '';
     
+    if (!config || !Array.isArray(timeSlots) || timeSlots.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Configuration is not set or time slots could not be calculated.</p></div>';
+        return;
+    }
+
     if (!assignments || assignments.length === 0) {
-        container.innerHTML = '<p>No timetable data available.</p>';
+        container.innerHTML = '<div class="empty-state"><p>No timetable data available. Generate a timetable from the Generate tab or load demo data.</p></div>';
         return;
     }
 
@@ -745,7 +867,7 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
                     if (rRoom && filterType !== 'room') meta.push(rRoom);
                     
                     return `
-                        <div class="tt-session-card">
+                        <div class="tt-session-card" data-session-id="${a.session_id}" style="cursor: pointer;" title="Click to adjust session placement">
                             <div class="tt-subj">${a.course_name} ${bBadge}</div>
                             <div class="tt-meta">${meta.join(' | ')}</div>
                         </div>
@@ -760,13 +882,23 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         tbody.appendChild(tr);
     });
       
-        table.appendChild(tbody);
-    container.appendChild(table);
+    table.appendChild(tbody);
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'table-scroll';
+    scrollContainer.appendChild(table);
+    container.appendChild(scrollContainer);
+
+    scrollContainer.querySelectorAll('.tt-session-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            const sid = e.currentTarget.getAttribute('data-session-id');
+            if (sid) openMoveModal(sid);
+        });
+    });
 }
 async function renderMasterView() {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'master', null, config, timeSlots);
 }
@@ -774,7 +906,7 @@ async function renderMasterView() {
 async function renderSectionView(sectionId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'section', sectionId, config, timeSlots);
 }
@@ -782,7 +914,7 @@ async function renderSectionView(sectionId) {
 async function renderFacultyView(facultyId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'faculty', facultyId, config, timeSlots);
 }
@@ -790,7 +922,7 @@ async function renderFacultyView(facultyId) {
 async function renderRoomView(roomId) {
     const config = await fetchConfigForViews();
     const tsRes = await fetch('/api/time-slots');
-    const timeSlots = await tsRes.json();
+    const timeSlots = tsRes.ok ? await tsRes.json() : [];
     const assignments = await fetchMasterAssignments();
     renderUnifiedGrid(assignments, 'room', roomId, config, timeSlots);
 }
@@ -804,7 +936,12 @@ document.querySelectorAll('.view-btn').forEach(btn => {
         
         const btnPrint = document.getElementById('btn-print');
         if (btnPrint) btnPrint.style.display = 'inline-block';
+        const btnExport = document.getElementById('btn-export-excel');
+        if (btnExport) btnExport.style.display = 'inline-flex';
         
+        const btnIcs = document.getElementById('btn-faculty-ics');
+        if (btnIcs) btnIcs.style.display = 'none';
+
         if (view === 'master') {
             selector.style.display = 'none';
             await renderMasterView();
@@ -832,7 +969,13 @@ document.querySelectorAll('.view-btn').forEach(btn => {
                     opt.textContent = d.name || d.id;
                     selector.appendChild(opt);
                 });
-                selector.onchange = (ev) => renderFacultyView(ev.target.value);
+                selector.onchange = (ev) => {
+                    if (btnIcs) {
+                        btnIcs.style.display = ev.target.value ? 'inline-block' : 'none';
+                        btnIcs.href = `/api/faculty/${encodeURIComponent(ev.target.value)}/calendar.ics`;
+                    }
+                    renderFacultyView(ev.target.value);
+                };
             } else if (view === 'room') {
                 const res = await fetch('/api/rooms');
                 data = await res.json();
@@ -930,183 +1073,579 @@ function resetEditState(formId) {
     }
 }
 
-function loadTimetableViewsInit() {
+// Timetable Views Initialization & Publishing Lifecycle
+async function loadTimetableViewsInit() {
+    await fetchPublishingStatus();
     const activeBtn = document.querySelector('.view-btn.active');
     if (!activeBtn) {
         const masterBtn = document.querySelector('.view-btn[data-view="master"]');
         if (masterBtn) masterBtn.click();
+    } else {
+        const view = activeBtn.dataset.view;
+        const selector = document.getElementById('view-selector');
+        if (view === 'master') {
+            await renderMasterView();
+        } else if (selector && selector.value) {
+            if (view === 'section') await renderSectionView(selector.value);
+            else if (view === 'faculty') await renderFacultyView(selector.value);
+            else if (view === 'room') await renderRoomView(selector.value);
+        }
     }
 }
 
-
-let currentVariantIndex = 0;
-let totalVariants = 0;
-
-async function loadVariantMetadata() {
+// Publishing State Management
+async function fetchPublishingStatus() {
     try {
-        const nav = document.getElementById('variant-navigator');
-        if (!nav) return;
-        const res = await fetch('/api/timetable/metadata');
-        if (!res.ok) {
-            nav.style.display = 'none';
+        const res = await fetch('/api/timetable/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        updatePublishingUI(data);
+    } catch (e) {
+        console.warn('Could not load timetable status:', e);
+    }
+}
+
+function updatePublishingUI(data) {
+    const headerChip = document.getElementById('header-lifecycle-chip');
+    const viewsBadge = document.getElementById('views-lifecycle-badge');
+    const btnPublish = document.getElementById('btn-publish-schedule');
+    const btnUnpublish = document.getElementById('btn-unpublish-schedule');
+
+    const isPublished = Boolean(data && data.is_published);
+    const label = isPublished ? 'Published' : 'Draft';
+
+    if (headerChip) {
+        headerChip.textContent = label;
+        headerChip.className = isPublished ? 'lifecycle-chip chip-published' : 'lifecycle-chip chip-draft';
+        if (data && data.published_at) {
+            headerChip.title = `Published at ${data.published_at} UTC`;
+        } else {
+            headerChip.title = 'Schedule in draft state';
+        }
+    }
+
+    if (viewsBadge) {
+        viewsBadge.textContent = label;
+        viewsBadge.className = isPublished ? 'lifecycle-chip chip-published' : 'lifecycle-chip chip-draft';
+    }
+
+    if (btnPublish && btnUnpublish) {
+        if (isPublished) {
+            btnPublish.style.display = 'none';
+            btnUnpublish.style.display = 'inline-block';
+        } else {
+            btnPublish.style.display = 'inline-block';
+            btnUnpublish.style.display = 'none';
+        }
+    }
+
+    const btnVersion = document.getElementById('btn-version-history');
+    if (btnVersion) {
+        btnVersion.style.display = 'inline-block';
+    }
+    const btnAlerts = document.getElementById('btn-change-alerts');
+    if (btnAlerts) {
+        btnAlerts.style.display = 'inline-block';
+    }
+    const btnReports = document.getElementById('btn-reports-analytics');
+    if (btnReports) {
+        btnReports.style.display = 'inline-block';
+    }
+}
+
+document.getElementById('btn-publish-schedule')?.addEventListener('click', async () => {
+    try {
+        const res = await fetchJSON('/api/timetable/publish', { method: 'POST' });
+        showNotification('Timetable published to institutional registry', 'success');
+        updatePublishingUI(res);
+    } catch (err) {
+        showNotification('Failed to publish timetable: ' + err.message, 'error');
+    }
+});
+
+document.getElementById('btn-unpublish-schedule')?.addEventListener('click', async () => {
+    try {
+        const res = await fetchJSON('/api/timetable/unpublish', { method: 'POST' });
+        showNotification('Timetable reverted to Draft state', 'info');
+        updatePublishingUI(res);
+    } catch (err) {
+        showNotification('Failed to unpublish timetable: ' + err.message, 'error');
+    }
+});
+
+document.getElementById('btn-header-snapshot')?.addEventListener('click', () => {
+    openVersionHistoryModal();
+});
+
+document.getElementById('btn-export-excel')?.addEventListener('click', () => {
+    window.location.href = '/api/export/excel';
+});
+
+document.getElementById('btn-print')?.addEventListener('click', () => {
+    window.print();
+});
+
+// Schedule Version History & Snapshots Controller
+const modalVersionHistory = document.getElementById('modal-version-history');
+const btnVersionHistory = document.getElementById('btn-version-history');
+const btnCloseVersionHistory = document.getElementById('btn-close-version-history');
+const btnDismissVersionHistory = document.getElementById('btn-dismiss-version-history');
+const btnSaveSnapshot = document.getElementById('btn-save-snapshot');
+const versionHistoryTbody = document.getElementById('version-history-tbody');
+
+function openVersionHistoryModal() {
+    if (modalVersionHistory) {
+        modalVersionHistory.style.display = 'flex';
+        loadVersionHistory();
+    }
+}
+
+function closeVersionHistoryModal() {
+    if (modalVersionHistory) {
+        modalVersionHistory.style.display = 'none';
+    }
+}
+
+btnVersionHistory?.addEventListener('click', openVersionHistoryModal);
+btnCloseVersionHistory?.addEventListener('click', closeVersionHistoryModal);
+btnDismissVersionHistory?.addEventListener('click', closeVersionHistoryModal);
+
+async function loadVersionHistory() {
+    if (!versionHistoryTbody) return;
+    versionHistoryTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading versions...</td></tr>';
+    try {
+        const res = await fetchJSON('/api/timetable/versions');
+        const versions = res.versions || [];
+        if (!versions.length) {
+            versionHistoryTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">No schedule snapshots saved yet. Use the form above to capture one.</td></tr>';
             return;
         }
-        const data = await res.json();
-        
-        if (data.num_variants > 1) {
-            nav.style.display = 'flex';
-            currentVariantIndex = data.active_variant_index;
-            totalVariants = data.num_variants;
-            
-            const curEl = document.getElementById('var-current');
-            const totEl = document.getElementById('var-total');
-            const scoreEl = document.getElementById('var-score');
-            const prevBtn = document.getElementById('btn-var-prev');
-            const nextBtn = document.getElementById('btn-var-next');
-            if (curEl) curEl.textContent = currentVariantIndex + 1;
-            if (totEl) totEl.textContent = totalVariants;
-            if (scoreEl) scoreEl.textContent = data.active_score ? data.active_score.total_score : 0;
-            if (prevBtn) prevBtn.disabled = currentVariantIndex === 0;
-            if (nextBtn) nextBtn.disabled = currentVariantIndex === totalVariants - 1;
-        } else {
-            nav.style.display = 'none';
-        }
-    } catch (e) {
-        const nav = document.getElementById('variant-navigator');
-        if (nav) nav.style.display = 'none';
-    }
-}
 
-document.getElementById('btn-var-prev')?.addEventListener('click', async () => {
-    if (currentVariantIndex > 0) await switchVariant(currentVariantIndex - 1);
-});
+        versionHistoryTbody.innerHTML = versions.map(v => `
+            <tr>
+                <td style="font-weight: 600;"><code>${v.version_tag}</code></td>
+                <td style="color: var(--color-text-secondary);">${v.created_at || 'N/A'}</td>
+                <td>${v.note || '<span style="color: var(--color-text-muted);">None</span>'}</td>
+                <td><span class="badge ${v.soft_score >= 80 ? 'badge-success' : 'badge-warning'}">${v.soft_score !== null ? v.soft_score + '%' : 'N/A'}</span></td>
+                <td>${v.assignment_count}</td>
+                <td style="text-align: right;">
+                    <button type="button" class="btn btn-outline btn-sm btn-restore-version" data-id="${v.id}" data-tag="${v.version_tag}" style="padding: 4px 10px; font-size: 12px;">
+                        Restore
+                    </button>
+                </td>
+            </tr>
+        `).join('');
 
-document.getElementById('btn-var-next')?.addEventListener('click', async () => {
-    if (currentVariantIndex < totalVariants - 1) await switchVariant(currentVariantIndex + 1);
-});
-
-async function switchVariant(index) {
-    try {
-        await fetch('/api/timetable/variant/' + index, { method: 'POST' });
-        await loadVariantMetadata();
-        
-        // Refresh the active view
-        const activeBtn = document.querySelector('.view-btn.active');
-        if (activeBtn) {
-            if (activeBtn.dataset.view === 'master') {
-                await renderMasterView();
-            } else {
-                const selector = document.getElementById('view-selector');
-                if (selector.value) {
-                    if (activeBtn.dataset.view === 'section') await renderSectionView(selector.value);
-                    else if (activeBtn.dataset.view === 'faculty') await renderFacultyView(selector.value);
-                    else if (activeBtn.dataset.view === 'room') await renderRoomView(selector.value);
+        // Attach restore click handlers
+        versionHistoryTbody.querySelectorAll('.btn-restore-version').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const vId = e.target.dataset.id;
+                const vTag = e.target.dataset.tag;
+                if (!confirm(`Are you sure you want to rollback the active schedule to version ${vTag}?`)) {
+                    return;
                 }
-            }
-        }
-    } catch (e) {
-        showNotification('Failed to switch timetable variant', 'error');
+                try {
+                    const result = await fetchJSON(`/api/timetable/versions/${vId}/restore`, { method: 'POST' });
+                    showNotification(result.message || `Restored version ${vTag}`, 'success');
+                    closeVersionHistoryModal();
+                    if (typeof checkTimetablePublishStatus === 'function') checkTimetablePublishStatus();
+                    const activeTab = document.querySelector('.view-btn.active')?.dataset.view || 'master';
+                    if (activeTab === 'master' && typeof renderMasterView === 'function') renderMasterView();
+                } catch (err) {
+                    showNotification('Restore failed: ' + (err.message || 'Unknown error'), 'error');
+                }
+            });
+        });
+    } catch (err) {
+        versionHistoryTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-danger); padding: 16px;">Failed to load history: ${err.message}</td></tr>`;
     }
 }
 
+btnSaveSnapshot?.addEventListener('click', async () => {
+    const tagInput = document.getElementById('snapshot-tag-input');
+    const noteInput = document.getElementById('snapshot-note-input');
+    const tag = (tagInput?.value || '').trim();
+    const note = (noteInput?.value || '').trim();
 
-document.getElementById('btn-generate-multiple')?.addEventListener('click', async () => {
-    const statusDiv = document.getElementById('gen-status-alt');
-    const statusText = document.getElementById('gen-status-text-alt');
-    const scoreDiv = document.getElementById('gen-score-alt');
-    const diagDiv = document.getElementById('gen-diagnostics-alt');
-    const altList = document.getElementById('alternatives-list');
-    
-    statusDiv.style.display = 'block';
-    statusText.textContent = 'Generating alternatives... Please wait';
-    statusText.style.color = '';
-    scoreDiv.style.display = 'none';
-    diagDiv.style.display = 'none';
-    altList.innerHTML = '<p style="color: #666;">Generating...</p>';
-    
     try {
-        const count = document.getElementById('alt-count').value;
-        const divPct = document.getElementById('alt-diversity').value;
-        const res = await fetchJSON('/api/generate-multiple', { 
+        const payload = {};
+        if (tag) payload.version_tag = tag;
+        if (note) payload.note = note;
+
+        const res = await fetchJSON('/api/timetable/versions/snapshot', {
             method: 'POST',
-            body: JSON.stringify({ count: count, min_diversity_pct: divPct })
+            body: JSON.stringify(payload)
         });
-        
-        if (res.status === 'success' || res.status === 'partial') {
-            lastGeneratedResult = res;
-            statusText.textContent = `Generated ${res.generated} unique diverse feasible timetables out of ${res.requested} requested.`;
-            statusText.style.color = 'var(--success)';
-            renderAlternativesList(res);
-        } else {
-            statusText.textContent = `Generation Failed (Infeasible)`;
-            statusText.style.color = 'var(--danger)';
-            diagDiv.style.display = 'block';
-            diagDiv.innerHTML = `<strong>Error:</strong> ${res.message}<br><pre>${res.diagnostics}</pre>`;
-            altList.innerHTML = '<p style="color: #666;">No alternatives to display.</p>';
-        }
-    } catch (e) {
-        statusText.textContent = 'Error: ' + e.message;
-        statusText.style.color = 'var(--danger)';
+
+        showNotification(res.message || 'Schedule snapshot created successfully', 'success');
+        if (tagInput) tagInput.value = '';
+        if (noteInput) noteInput.value = '';
+        loadVersionHistory();
+    } catch (err) {
+        showNotification('Snapshot failed: ' + err.message, 'error');
     }
 });
 
-let lastGeneratedResult = null; // store globally when generated
+// Timetable Change Alert Log Controller
+const modalChangeAlerts = document.getElementById('modal-change-alerts');
+const btnChangeAlerts = document.getElementById('btn-change-alerts');
+const btnCloseChangeAlerts = document.getElementById('btn-close-change-alerts');
+const btnDismissChangeAlerts = document.getElementById('btn-dismiss-change-alerts');
+const btnClearChangeAlerts = document.getElementById('btn-clear-change-alerts');
+const changeAlertsTbody = document.getElementById('change-alerts-tbody');
 
-async function makeActive(index) {
+btnChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) {
+        modalChangeAlerts.style.display = 'flex';
+        loadChangeAlerts();
+    }
+});
+btnCloseChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) modalChangeAlerts.style.display = 'none';
+});
+btnDismissChangeAlerts?.addEventListener('click', () => {
+    if (modalChangeAlerts) modalChangeAlerts.style.display = 'none';
+});
+
+async function loadChangeAlerts() {
+    if (!changeAlertsTbody) return;
+    changeAlertsTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">Loading alerts...</td></tr>';
     try {
-        await fetch('/api/timetable/variant/' + index, { method: 'POST' });
-        if (lastGeneratedResult) {
-            lastGeneratedResult.active_variant_index = index;
-            renderAlternativesList(lastGeneratedResult);
+        const res = await fetchJSON('/api/timetable/change-log');
+        const alerts = res.alerts || [];
+        if (!alerts.length) {
+            changeAlertsTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary); padding: 16px;">No recent timetable change events recorded.</td></tr>';
+            return;
         }
-    } catch (e) {
-        showNotification('Failed to set active alternative', 'error');
+
+        changeAlertsTbody.innerHTML = alerts.map(a => {
+            const det = a.details || {};
+            let desc = '';
+            if (a.event_type === 'MOVE') {
+                desc = `Relocated ${det.course_code || a.session_id} to ${det.target_day} (slot ${det.target_slot}, room ${det.target_room})`;
+            } else if (a.event_type === 'SWAP') {
+                desc = `Swapped sessions ${det.session_a} and ${det.session_b}`;
+            } else if (a.event_type === 'ROLLBACK') {
+                desc = `Rollback to version ${det.version_tag} (${det.restored_assignments || 0} assignments restored)`;
+            } else {
+                desc = JSON.stringify(det);
+            }
+            return `
+                <tr>
+                    <td><span class="badge ${a.event_type === 'MOVE' ? 'badge-primary' : (a.event_type === 'SWAP' ? 'badge-accent' : 'badge-warning')}">${a.event_type}</span></td>
+                    <td style="color: var(--color-text-secondary);">${a.created_at || 'N/A'}</td>
+                    <td><code>${a.session_id}</code></td>
+                    <td>${desc}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        changeAlertsTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--color-danger); padding: 16px;">Failed to load alerts: ${err.message}</td></tr>`;
     }
 }
 
-function renderAlternativesList(res) {
-    const altList = document.getElementById('alternatives-list');
-    altList.innerHTML = '';
-    res.alternatives.forEach((alt, idx) => {
-        const isActive = res.active_variant_index === idx;
-        
-        const card = document.createElement('div');
-        card.style.border = isActive ? '2px solid var(--primary)' : '1px solid #ccc';
-        card.style.padding = '15px';
-        card.style.borderRadius = '8px';
-        card.style.background = isActive ? '#f0f7ff' : '#fff';
-        
-        const divDisplay = alt.diversity_pct === 'Base' ? 'Base' : `${alt.diversity_pct}%`;
-        const changedDisplay = alt.diversity_pct === 'Base' ? '' : `Changed: ${alt.changed_assignments}/${alt.stats.total_sessions} sessions &bull; `;
-        
-        let html = `
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">Alternative ${alt.alternative_id} ${isActive ? '<span style="font-size: 12px; background: var(--primary); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 10px;">ACTIVE</span>' : ''}</h3>
-                    
-                    <div style="margin-top: 10px;">
-                        ${alt.stats.total_sessions}/${alt.stats.total_sessions} sessions
-                    </div>
-                    <div style="margin-top: 5px; font-weight: bold;">
-                        Soft Constraint Score: ${alt.soft_score.percentage}% (${alt.soft_score.total_score})
-                    </div>
-                    <div style="margin-top: 5px; color: #2c3e50;">
-                        Diversity: ${divDisplay}
-                    </div>
-                    <div style="color: #666; font-size: 13px; margin-top: 5px;">
-                        ${changedDisplay}Seed: ${alt.seed} &bull; Time: ${alt.stats.time_ms} ms &bull; Backtracks: ${alt.stats.backtracks}
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 5px;">
-                    <button class="btn" onclick="document.querySelector('button[data-target=views]').click()">View</button>
-                    ${!isActive ? `<button class="btn primary" onclick="makeActive(${idx})">Make Active</button>` : ''}
-                </div>
-            </div>
+btnClearChangeAlerts?.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear the change alert log?')) return;
+    try {
+        await fetchJSON('/api/timetable/change-log/clear', { method: 'POST' });
+        showNotification('Change alert log cleared', 'info');
+        loadChangeAlerts();
+    } catch (err) {
+        showNotification('Failed to clear alerts: ' + err.message, 'error');
+    }
+});
+
+// Institutional Reports & Utilization Controller
+const modalReports = document.getElementById('modal-reports');
+const btnReportsAnalytics = document.getElementById('btn-reports-analytics');
+const btnCloseReports = document.getElementById('btn-close-reports');
+const btnDismissReports = document.getElementById('btn-dismiss-reports');
+const reportContentPanel = document.getElementById('report-content-panel');
+let currentReportData = null;
+let activeReportTab = 'rooms';
+
+btnReportsAnalytics?.addEventListener('click', async () => {
+    if (modalReports) {
+        modalReports.style.display = 'flex';
+        await loadUtilizationReport();
+    }
+});
+btnCloseReports?.addEventListener('click', () => {
+    if (modalReports) modalReports.style.display = 'none';
+});
+btnDismissReports?.addEventListener('click', () => {
+    if (modalReports) modalReports.style.display = 'none';
+});
+
+document.querySelectorAll('.report-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.report-tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        activeReportTab = e.target.dataset.report;
+        renderReportTab();
+    });
+});
+
+async function loadUtilizationReport() {
+    if (!reportContentPanel) return;
+    reportContentPanel.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--color-text-secondary);">Calculating institutional metrics...</div>';
+    try {
+        const res = await fetchJSON('/api/reports/utilization');
+        currentReportData = res;
+        renderReportTab();
+    } catch (err) {
+        reportContentPanel.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--color-danger);">Failed to load reports: ${err.message}</div>`;
+    }
+}
+
+function renderReportTab() {
+    if (!currentReportData || !reportContentPanel) return;
+    if (activeReportTab === 'rooms') {
+        const rooms = currentReportData.rooms || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Facility Room</th>
+                        <th>Type</th>
+                        <th>Capacity</th>
+                        <th>Occupied Slots</th>
+                        <th>Weekly Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rooms.map(r => `
+                        <tr>
+                            <td style="font-weight: 600;">${r.room_name} (${r.room_id})</td>
+                            <td>${r.room_type}</td>
+                            <td>${r.capacity || 'N/A'}</td>
+                            <td>${r.occupied_slots} / ${r.total_slots}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="flex: 1; height: 8px; background: var(--color-paper-2); border-radius: 4px; overflow: hidden; max-width: 120px;">
+                                        <div style="width: ${Math.min(100, r.utilization_pct)}%; height: 100%; background: ${r.utilization_pct > 70 ? 'var(--color-warning)' : 'var(--color-accent)'};"></div>
+                                    </div>
+                                    <span style="font-weight: 600;">${r.utilization_pct}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
         `;
-        card.innerHTML = html;
-        altList.appendChild(card);
+    } else if (activeReportTab === 'faculty') {
+        const faculty = currentReportData.faculty || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Faculty Member</th>
+                        <th>Assigned Courses</th>
+                        <th>Weekly Contact Hours</th>
+                        <th>Schedule Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${faculty.map(f => `
+                        <tr>
+                            <td style="font-weight: 600;">${f.faculty_name} (${f.faculty_id})</td>
+                            <td>${f.course_count} courses</td>
+                            <td style="font-weight: 600;">${f.weekly_hours} hrs / week</td>
+                            <td><span class="badge ${f.weekly_hours > 0 ? 'badge-success' : 'badge-muted'}">${f.weekly_hours > 0 ? 'Assigned' : 'Available'}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } else if (activeReportTab === 'sections') {
+        const sections = currentReportData.sections || [];
+        reportContentPanel.innerHTML = `
+            <table class="data-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Cohort Section</th>
+                        <th>Semester</th>
+                        <th>Scheduled Periods</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sections.map(s => `
+                        <tr>
+                            <td style="font-weight: 600;">${s.section_name} (${s.section_id})</td>
+                            <td>Semester ${s.semester}</td>
+                            <td>${s.scheduled_sessions} sessions / week</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+}
+
+// Register Progressive Web App Service Worker
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
 }
+
+// Candidate Variants Comparison & Pareto Selection
+let candidateVariants = [];
+let activeVariantIndex = 0;
+
+function renderVariantsComparison(variants, activeIdx) {
+    candidateVariants = variants || [];
+    activeVariantIndex = activeIdx || 0;
+
+    const panel = document.getElementById('variants-comparison-panel');
+    const grid = document.getElementById('variants-grid');
+    if (!panel || !grid) return;
+
+    if (!candidateVariants || candidateVariants.length === 0) {
+        panel.style.display = 'none';
+        grid.innerHTML = '';
+        return;
+    }
+
+    panel.style.display = 'block';
+    grid.innerHTML = '';
+
+    candidateVariants.forEach((v, idx) => {
+        const isActive = idx === activeVariantIndex;
+        const card = document.createElement('div');
+        card.className = isActive ? 'variant-card active-variant' : 'variant-card';
+
+        const score = v.soft_score ? v.soft_score.percentage : 0;
+        const divLabel = v.diversity_pct === 'Base' ? 'Baseline Pareto' : `${v.diversity_pct}% Divergence`;
+        const stats = v.stats || {};
+
+        let chipsHtml = '';
+        if (v.soft_score && v.soft_score.details) {
+            chipsHtml = Object.entries(v.soft_score.details)
+                .slice(0, 3)
+                .map(([k, d]) => `<span class="score-chip">${d.description || k}: <strong>${d.score}/${d.max}</strong></span>`)
+                .join('');
+        }
+
+        card.innerHTML = `
+            <div class="variant-card-header">
+                <h4 class="variant-title">Candidate Schedule ${idx + 1}</h4>
+                ${isActive ? '<span class="variant-active-indicator">Active Selection</span>' : ''}
+            </div>
+            <div class="variant-metrics-row">
+                <span class="variant-score-badge">${score}% Quality</span>
+                <span class="variant-diversity-tag">${divLabel}</span>
+            </div>
+            <div class="variant-chips-wrap">
+                ${chipsHtml}
+            </div>
+            <div style="font-size: 11.5px; color: var(--color-text-secondary); margin-top: auto;">
+                ${stats.total_sessions || 0} sessions &bull; ${stats.backtracks || 0} backtracks &bull; ${stats.time_ms || 0}ms
+            </div>
+            <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
+                <button type="button" class="btn btn-sm btn-outline btn-inspect-variant" data-index="${idx}" style="flex: 1;">
+                    Inspect Views
+                </button>
+                ${!isActive ? `<button type="button" class="btn btn-sm btn-primary btn-activate-variant" data-index="${idx}" style="flex: 1;">Activate</button>` : ''}
+            </div>
+        `;
+
+        grid.appendChild(card);
+    });
+
+    grid.querySelectorAll('.btn-activate-variant').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+            await activateVariant(idx);
+        });
+    });
+
+    grid.querySelectorAll('.btn-inspect-variant').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+            if (idx !== activeVariantIndex) {
+                await activateVariant(idx);
+            }
+            const viewsTabBtn = document.querySelector('.tab-btn[data-target="views"]');
+            if (viewsTabBtn) viewsTabBtn.click();
+        });
+    });
+}
+
+async function activateVariant(index) {
+    try {
+        await fetchJSON('/api/timetable/variant/' + index, { method: 'POST' });
+        activeVariantIndex = index;
+        renderVariantsComparison(candidateVariants, activeVariantIndex);
+        showNotification(`Activated Candidate Schedule ${index + 1}`, 'success');
+
+        const activeBtn = document.querySelector('.view-btn.active');
+        if (activeBtn) {
+            activeBtn.click();
+        }
+    } catch (e) {
+        showNotification('Failed to activate timetable candidate', 'error');
+    }
+}
+
+document.getElementById('btn-generate-multiple')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-generate-multiple');
+    const singleBtn = document.getElementById('btn-generate');
+    const statusDiv = document.getElementById('generate-status');
+    const statusCard = document.getElementById('gen-status-card');
+    const statusText = document.getElementById('gen-status-text');
+    const scoreDiv = document.getElementById('gen-score');
+    const diagDiv = document.getElementById('gen-diagnostics');
+
+    btn.disabled = true;
+    if (singleBtn) singleBtn.disabled = true;
+    btn.innerHTML = 'Generating 3 Alternatives...';
+    statusDiv.style.display = 'block';
+    statusCard.className = 'status-card';
+    statusText.textContent = 'Exploring solution space with randomized heuristic orderings...';
+    statusText.style.color = 'var(--color-text-secondary)';
+    scoreDiv.style.display = 'none';
+    diagDiv.style.display = 'none';
+
+    try {
+        const res = await fetchJSON('/api/generate-multiple', {
+            method: 'POST',
+            body: JSON.stringify({ count: 3, min_diversity_pct: 15 })
+        });
+
+        if (res.status === 'success' || res.status === 'partial') {
+            statusCard.className = 'status-card success-card';
+            statusText.textContent = `Generated ${res.generated} candidate timetable alternatives with verified diversity`;
+            statusText.style.color = 'var(--color-success)';
+
+            const variants = res.variants || res.alternatives || [];
+            renderVariantsComparison(variants, res.active_variant_index || 0);
+
+            const btnExport = document.getElementById('btn-export-excel');
+            if (btnExport) btnExport.style.display = 'inline-flex';
+            const btnPrint = document.getElementById('btn-print');
+            if (btnPrint) btnPrint.style.display = 'inline-block';
+
+            fetchPublishingStatus();
+
+            showNotification(`Generated ${res.generated} candidate alternatives successfully!`, 'success');
+        } else {
+            statusCard.className = 'status-card error-card';
+            statusText.textContent = 'Candidate Generation Infeasible';
+            statusText.style.color = 'var(--color-danger)';
+            diagDiv.style.display = 'block';
+            diagDiv.innerHTML = `<strong>Diagnostic Conflict:</strong> ${res.message || 'Infeasible problem'}<br><pre class="diagnostics-pre">${res.diagnostics || ''}</pre>`;
+        }
+    } catch (e) {
+        statusCard.className = 'status-card error-card';
+        statusText.textContent = `Error: ${e.message}`;
+        statusText.style.color = 'var(--color-danger)';
+    } finally {
+        btn.disabled = false;
+        if (singleBtn) singleBtn.disabled = false;
+        btn.innerHTML = 'Generate 3 Alternatives';
+    }
+});
 
 
 
@@ -1144,3 +1683,556 @@ async function saveTraceConfig() {
         showNotification(err.message, 'error');
     }
 }
+
+// ── Excel Ingestion Modal & Controls ─────────────────────────────────────────
+function initImportModal() {
+    const modal = document.getElementById('modal-import');
+    const btnOpen = document.getElementById('btn-open-import');
+    const btnClose = document.getElementById('btn-close-import');
+    const btnCancel = document.getElementById('btn-cancel-import');
+    const form = document.getElementById('form-import-excel');
+    const feedback = document.getElementById('import-feedback');
+    const submitBtn = document.getElementById('btn-submit-import');
+
+    function openModal() {
+        if (modal) {
+            modal.style.display = 'flex';
+            if (feedback) { feedback.style.display = 'none'; feedback.innerHTML = ''; }
+            if (form) form.reset();
+        }
+    }
+
+    function closeModal() {
+        if (modal) modal.style.display = 'none';
+    }
+
+    if (btnOpen && !btnOpen._hasListener) {
+        btnOpen._hasListener = true;
+        btnOpen.addEventListener('click', openModal);
+    }
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeModal);
+    }
+
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('excel-file-input');
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                alert('Please select an Excel workbook (.xlsx)');
+                return;
+            }
+
+            const mode = form.querySelector('input[name="import_mode"]:checked')?.value || 'replace';
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('mode', mode);
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Validating & Ingesting...';
+            if (feedback) feedback.style.display = 'none';
+
+            try {
+                const headers = {};
+                const csrf = getCsrfToken();
+                if (csrf) headers['X-CSRF-Token'] = csrf;
+
+                const res = await fetch('/api/import/excel', {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+                const result = await res.json();
+
+                if (res.ok && result.status === 'ok') {
+                    const counts = result.imported || {};
+                    feedback.className = 'import-feedback-box feedback-success';
+                    feedback.innerHTML = `
+                        <strong>Import Successful!</strong><br>
+                        Ingested: ${counts.rooms || 0} rooms, ${counts.faculty || 0} faculty, ${counts.sections || 0} sections, ${counts.batches || 0} batches, ${counts.courses || 0} courses.
+                    `;
+                    feedback.style.display = 'block';
+                    showNotification('Institutional data imported successfully', 'success');
+
+                    const activeTab = document.querySelector('.tab-btn.active')?.dataset.target || 'config';
+                    loadTabData(activeTab);
+
+                    setTimeout(closeModal, 1800);
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    const errList = (result.errors || [result.message || 'Validation error'])
+                        .map(err => `<li>${err}</li>`).join('');
+                    feedback.innerHTML = `
+                        <strong>Import Validation Failed:</strong>
+                        <ul style="margin: 6px 0 0 16px; padding: 0;">${errList}</ul>
+                    `;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Network Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload & Validate';
+            }
+        });
+    }
+}
+
+// Interactive Schedule Move Modal
+async function openMoveModal(sessionId) {
+    const session = (cachedMasterAssignments || []).find(a => a.session_id === sessionId);
+    if (!session) {
+        showNotification('Session details not found in active schedule', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('modal-move-session');
+    const titleEl = document.getElementById('move-modal-course-title');
+    const metaEl = document.getElementById('move-modal-course-meta');
+    const posEl = document.getElementById('move-modal-current-pos');
+    const idInput = document.getElementById('move-session-id');
+    const daySelect = document.getElementById('move-target-day');
+    const slotSelect = document.getElementById('move-target-slot');
+    const roomSelect = document.getElementById('move-target-room');
+    const feedback = document.getElementById('move-feedback');
+
+    if (!modal) return;
+
+    idInput.value = sessionId;
+    titleEl.textContent = `${session.course_code}: ${session.course_name}`;
+    metaEl.textContent = `Section: ${session.section_name} | Batch: ${session.batch_name} | Faculty: ${session.faculty_name} | Duration: ${session.duration_slots || 1} period(s)`;
+    posEl.textContent = `Current Placement: ${session.day}, ${session.time_start} - ${session.time_end} in ${session.room_name}`;
+    if (feedback) feedback.style.display = 'none';
+
+    try {
+        const [config, timeSlotsRes, roomsRes] = await Promise.all([
+            fetchConfigForViews(),
+            fetch('/api/time-slots'),
+            fetch('/api/rooms')
+        ]);
+        const timeSlots = await timeSlotsRes.json();
+        const rooms = await roomsRes.json();
+
+        daySelect.innerHTML = (config.working_days || []).map(d =>
+            `<option value="${d}" ${d === session.day ? 'selected' : ''}>${d}</option>`
+        ).join('');
+
+        slotSelect.innerHTML = timeSlots.map((ts, idx) =>
+            `<option value="${idx}" ${idx === session.start_slot_index ? 'selected' : ''}>Period ${idx + 1} (${ts.start_time} - ${ts.end_time})</option>`
+        ).join('');
+
+        roomSelect.innerHTML = rooms.map(r =>
+            `<option value="${r.id}" ${r.id === session.room_id ? 'selected' : ''}>${r.name} (${r.room_type}, Cap: ${r.capacity})</option>`
+        ).join('');
+
+        modal.style.display = 'flex';
+    } catch (err) {
+        showNotification('Could not load modal configuration options', 'error');
+    }
+}
+
+function initMoveModal() {
+    const modal = document.getElementById('modal-move-session');
+    const btnClose = document.getElementById('btn-close-move');
+    const btnCancel = document.getElementById('btn-cancel-move');
+    const btnCheck = document.getElementById('btn-check-move');
+    const form = document.getElementById('form-move-session');
+    const feedback = document.getElementById('move-feedback');
+    const btnApply = document.getElementById('btn-apply-move');
+
+    function closeModal() {
+        if (modal) modal.style.display = 'none';
+    }
+
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeModal);
+    }
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    if (btnCheck && !btnCheck._hasListener) {
+        btnCheck._hasListener = true;
+        btnCheck.addEventListener('click', async () => {
+            const sessionId = document.getElementById('move-session-id').value;
+            const targetDay = document.getElementById('move-target-day').value;
+            const targetSlot = document.getElementById('move-target-slot').value;
+            const targetRoom = document.getElementById('move-target-room').value;
+
+            btnCheck.disabled = true;
+            btnCheck.textContent = 'Checking...';
+            try {
+                const res = await fetchJSON('/api/timetable/validate-move', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        target_day: targetDay,
+                        target_start_slot: parseInt(targetSlot, 10),
+                        target_room_id: targetRoom
+                    })
+                });
+
+                if (res.valid) {
+                    feedback.className = 'import-feedback-box feedback-success';
+                    feedback.innerHTML = `<strong>Conflict-Free:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Conflict Detected:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Validation Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                btnCheck.disabled = false;
+                btnCheck.textContent = 'Check Feasibility';
+            }
+        });
+    }
+
+    if (form && !form._hasMoveSubmit) {
+        form._hasMoveSubmit = true;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const sessionId = document.getElementById('move-session-id').value;
+            const targetDay = document.getElementById('move-target-day').value;
+            const targetSlot = document.getElementById('move-target-slot').value;
+            const targetRoom = document.getElementById('move-target-room').value;
+
+            btnApply.disabled = true;
+            btnApply.textContent = 'Relocating Session...';
+
+            try {
+                const res = await fetchJSON('/api/timetable/move', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        target_day: targetDay,
+                        target_start_slot: parseInt(targetSlot, 10),
+                        target_room_id: targetRoom
+                    })
+                });
+
+                if (res.status === 'ok') {
+                    showNotification('Session relocated successfully', 'success');
+                    closeModal();
+                    fetchPublishingStatus();
+                    const activeBtn = document.querySelector('.view-btn.active');
+                    if (activeBtn) activeBtn.click();
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Cannot Apply Move:</strong> ${res.message}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Move Failed:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                btnApply.disabled = false;
+                btnApply.textContent = 'Apply Move';
+            }
+        });
+    }
+}
+
+// Authentication & Role Session Management
+let currentUser = null;
+
+async function checkAuthStatus() {
+    try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) return;
+        const data = await res.json();
+        currentUser = data.authenticated ? data.user : null;
+        if (data.csrf_token) currentCsrfToken = data.csrf_token;
+        updateAuthHeaderUI();
+    } catch (e) {
+        console.warn('Could not check auth status:', e);
+    }
+}
+
+function updateAuthHeaderUI() {
+    const badge = document.getElementById('header-user-badge');
+    const btn = document.getElementById('btn-auth-action');
+    if (!badge || !btn) return;
+
+    if (currentUser) {
+        badge.textContent = `${currentUser.username} (${currentUser.role})`;
+        badge.className = 'lifecycle-chip chip-published';
+        badge.style.display = 'inline-block';
+        btn.textContent = 'Sign Out';
+        btn.onclick = handleSignOut;
+    } else {
+        badge.style.display = 'none';
+        btn.textContent = 'Sign In';
+        btn.onclick = openAuthModal;
+    }
+
+    applyRoleView();
+}
+
+function applyRoleView() {
+    const landing = document.getElementById('landing-section');
+    const faculty = document.getElementById('faculty-dashboard-section');
+    const workbench = document.getElementById('workbench-section');
+    const wbNav = document.getElementById('nav-link-workbench');
+
+    if (!currentUser) {
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Workbench';
+            wbNav.href = '#workbench-section';
+        }
+        return;
+    }
+
+    if (currentUser.role === 'FACULTY') {
+        if (landing) landing.style.display = 'none';
+        if (workbench) workbench.style.display = 'none';
+        if (faculty) faculty.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Faculty Dashboard';
+            wbNav.href = '#faculty-dashboard-section';
+        }
+        loadFacultyDashboard();
+    } else if (currentUser.role === 'STUDENT') {
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'none';
+        if (wbNav) {
+            wbNav.style.display = 'none';
+        }
+    } else {
+        // ADMIN or COORDINATOR
+        if (landing) landing.style.display = 'block';
+        if (faculty) faculty.style.display = 'none';
+        if (workbench) workbench.style.display = 'block';
+        if (wbNav) {
+            wbNav.style.display = 'inline-block';
+            wbNav.textContent = 'Workbench';
+            wbNav.href = '#workbench-section';
+        }
+    }
+}
+
+async function loadFacultyDashboard() {
+    try {
+        const res = await fetch('/api/faculty/me/schedule');
+        const title = document.getElementById('faculty-welcome-title');
+        const hours = document.getElementById('faculty-workload-hours');
+        const count = document.getElementById('faculty-course-count');
+        const names = document.getElementById('faculty-course-names');
+        const icsDisplay = document.getElementById('faculty-ics-url-display');
+        const btnIcs = document.getElementById('btn-faculty-ics');
+        const container = document.getElementById('faculty-personal-timetable-container');
+
+        if (!res.ok) {
+            if (res.status === 404) {
+                if (title) title.textContent = `Faculty Profile: ${currentUser.name || currentUser.username}`;
+                if (hours) hours.textContent = '0.0 hrs';
+                if (count) count.textContent = 'Unlinked Account';
+                if (names) names.textContent = 'No faculty record is linked to your user account. Contact your administrator.';
+                if (container) container.innerHTML = '<p class="form-hint">Unlinked account: no personal schedule available.</p>';
+            }
+            return;
+        }
+
+        const data = await res.json();
+        const fac = data.faculty || {};
+        const courses = data.courses || [];
+        const sessions = data.sessions || [];
+
+        if (title) title.textContent = `Faculty Schedule: ${fac.name || currentUser.name}`;
+        if (hours) hours.textContent = `${fac.weekly_contact_hours || 0} hrs`;
+        if (count) count.textContent = `${courses.length} course${courses.length === 1 ? '' : 's'}`;
+        if (names) names.textContent = courses.map(c => `${c.code} (${c.name})`).join(', ') || 'No courses assigned';
+
+        const icsUrl = fac.calendar_ics_url ? (window.location.origin + fac.calendar_ics_url) : '';
+        if (icsDisplay) icsDisplay.value = icsUrl;
+        if (btnIcs) {
+            btnIcs.onclick = () => {
+                if (fac.calendar_ics_url) window.open(fac.calendar_ics_url, '_blank');
+            };
+        }
+
+        if (container) {
+            if (sessions.length === 0) {
+                container.innerHTML = '<p class="form-hint">No timetable sessions scheduled for your courses in the active term yet.</p>';
+            } else {
+                let html = '<table class="data-table"><thead><tr><th>Day</th><th>Slot / Period</th><th>Course</th><th>Section</th><th>Room</th></tr></thead><tbody>';
+                sessions.forEach(s => {
+                    const slotText = s.time_start ? `${s.time_start} - ${s.time_end || ''}` : `Slot ${(s.start_slot_index || 0) + 1}`;
+                    html += `<tr><td>${s.day}</td><td>${slotText}</td><td><strong>${s.course_code}</strong>: ${s.course_name}</td><td>${s.section_name}</td><td>${s.room_name}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            }
+        }
+    } catch (e) {
+        console.warn('Could not load faculty dashboard:', e);
+    }
+}
+
+async function handleSignOut() {
+    try {
+        await fetchJSON('/api/auth/logout', { method: 'POST' });
+        currentUser = null;
+        currentCsrfToken = '';
+        updateAuthHeaderUI();
+        showNotification('Signed out successfully', 'info');
+    } catch (e) {
+        showNotification('Sign out failed', 'error');
+    }
+}
+
+function openAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    if (modal) modal.style.display = 'none';
+}
+
+function initAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    const btnClose = document.getElementById('btn-close-auth');
+    const btnCancel = document.getElementById('btn-cancel-auth');
+    const form = document.getElementById('form-auth-login');
+    const feedback = document.getElementById('auth-feedback');
+    const quickBtns = document.querySelectorAll('.btn-quick-login');
+    const btnAuth = document.getElementById('btn-auth-action');
+
+    if (btnAuth && !btnAuth._hasAuthListener) {
+        btnAuth._hasAuthListener = true;
+        btnAuth.addEventListener('click', () => {
+            if (currentUser) {
+                handleSignOut();
+            } else {
+                openAuthModal();
+            }
+        });
+    }
+
+    if (btnClose && !btnClose._hasListener) {
+        btnClose._hasListener = true;
+        btnClose.addEventListener('click', closeAuthModal);
+    }
+    if (btnCancel && !btnCancel._hasListener) {
+        btnCancel._hasListener = true;
+        btnCancel.addEventListener('click', closeAuthModal);
+    }
+    if (modal && !modal._hasBackdropListener) {
+        modal._hasBackdropListener = true;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeAuthModal();
+        });
+    }
+
+    quickBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const u = btn.getAttribute('data-username');
+            const p = btn.getAttribute('data-password');
+            const userField = document.getElementById('auth-username');
+            const passField = document.getElementById('auth-password');
+            if (userField && passField) {
+                userField.value = u;
+                passField.value = p;
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    const submitBtn = document.getElementById('btn-submit-auth');
+                    if (submitBtn) submitBtn.click();
+                }
+            }
+        });
+    });
+
+    if (form && !form._hasAuthSubmit) {
+        form._hasAuthSubmit = true;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('auth-username').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const submitBtn = document.getElementById('btn-submit-auth');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Authenticating...';
+            if (feedback) feedback.style.display = 'none';
+
+            try {
+                const res = await fetchJSON('/api/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (res.status === 'ok') {
+                    currentUser = res.user;
+                    if (res.csrf_token) currentCsrfToken = res.csrf_token;
+                    updateAuthHeaderUI();
+                    showNotification(`Welcome, ${res.user.name}!`, 'success');
+                    closeAuthModal();
+                } else {
+                    feedback.className = 'import-feedback-box feedback-error';
+                    feedback.innerHTML = `<strong>Error:</strong> ${res.error || 'Authentication failed'}`;
+                    feedback.style.display = 'block';
+                }
+            } catch (err) {
+                feedback.className = 'import-feedback-box feedback-error';
+                feedback.innerHTML = `<strong>Error:</strong> ${err.message}`;
+                feedback.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
+            }
+        });
+    }
+}
+
+// Ensure modals are bound immediately
+initImportModal();
+initMoveModal();
+initAuthModal();
+
+// Commercial landing page hero action
+document.getElementById('btn-hero-launch-workbench')?.addEventListener('click', () => {
+    const wb = document.getElementById('workbench-section');
+    const fac = document.getElementById('faculty-dashboard-section');
+    if (currentUser && currentUser.role === 'FACULTY' && fac) {
+        fac.scrollIntoView({ behavior: 'smooth' });
+    } else if (wb) {
+        wb.scrollIntoView({ behavior: 'smooth' });
+        const configTab = document.querySelector('.tab-btn[data-target="config"]');
+        if (configTab) configTab.click();
+    }
+});

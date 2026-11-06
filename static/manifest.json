@@ -1,0 +1,17 @@
+{
+  "name": "AutoSchedule Academic Timetable",
+  "short_name": "AutoSchedule",
+  "description": "Intelligent Constraint-Based Academic Timetable Scheduler & Campus Registry",
+  "start_url": "/portal",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

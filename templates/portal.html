@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Campus public timetable portal for viewing institutional academic schedules.">
+    <title>AutoSchedule: Campus Timetable Portal</title>
+    <link rel="stylesheet" href="/static/tokens.css">
+    <link rel="stylesheet" href="/static/base.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        /* Hallmark: 2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active, .btn:active, a[role="button"]:active { transform: translateY(1px); }
+        button:disabled, .btn:disabled, input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
+</head>
+
+<body>
+
+    <header class="app-header">
+        <div class="container header-inner">
+            <a href="/" class="header-brand">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <div class="header-text">
+                    <h1>AutoSchedule Portal</h1>
+                    <span class="header-subtitle">Institutional Academic Schedule Directory</span>
+                </div>
+            </a>
+
+            <div class="portal-nav-actions">
+                <select id="portal-term-select" class="header-term-selector" aria-label="Academic Term"></select>
+                <span id="portal-status-chip" class="lifecycle-chip chip-draft">Draft</span>
+                <a href="/" class="btn btn-outline btn-sm">Scheduling Console</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="portal-main">
+
+        <div id="portal-notice" class="portal-notice-banner"></div>
+
+        <div class="surface-card portal-toolbar">
+            <div class="portal-filter-group">
+                <div class="view-tabs" role="tablist">
+                    <button class="view-btn active" data-view="section">By Section</button>
+                    <button class="view-btn" data-view="faculty">By Faculty</button>
+                    <button class="view-btn" data-view="room">By Room</button>
+                    <button class="view-btn" data-view="master">Master View</button>
+                </div>
+
+                <select id="portal-entity-selector" class="view-dropdown" aria-label="Select cohort or instructor">
+                    <option value="">Loading schedules…</option>
+                </select>
+            </div>
+
+            <div class="actions">
+                <input type="text" id="portal-search-box" class="portal-search-input" placeholder="Search subject, faculty, room…" aria-label="Search timetable">
+                <a id="portal-btn-ics" class="btn btn-outline btn-sm" style="display: none; text-decoration: none; white-space: nowrap;" target="_blank">Subscribe Calendar (.ics)</a>
+                <a href="/api/export/excel" class="btn btn-primary btn-sm" download>Export Excel</a>
+                <button type="button" class="btn btn-outline btn-sm" onclick="window.print()">Print</button>
+            </div>
+        </div>
+
+        <div id="portal-timetable-content" class="timetable-viewport surface-card">
+            <div class="empty-state">
+                <p>Loading published schedule data…</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Commercial Site Footer -->
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="footer-brand">
+                <h2>AutoSchedule</h2>
+                <p>Enterprise academic timetable scheduler powered by pure-Python constraint satisfaction problem (CSP) heuristics.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h5>Platform</h5>
+                    <ul>
+                        <li><a href="/">Overview</a></li>
+                        <li><a href="/">Scheduling Workbench</a></li>
+                        <li><a href="/portal">Student Portal</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Data Feeds</h5>
+                    <ul>
+                        <li><a href="/api/export/excel">Excel Export</a></li>
+                        <li><a href="/api/timetable/master">Master JSON</a></li>
+                        <li><a href="/api/timetable/status">Term Status</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-meta">
+                <span>&copy; 2026 AutoSchedule Academic Systems.</span>
+                <span>Deterministic CSP Solver · RFC 5545 iCalendar Feeds</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            let activeView = 'section';
+            let allAssignments = [];
+            let appConfig = null;
+            let appTimeSlots = [];
+
+            async function initPortal() {
+                try {
+                    await Promise.all([loadStatus(), loadTerms(), loadConfigAndSlots()]);
+                    await loadAssignments();
+                    setupViewTabs();
+                    setupSearch();
+                } catch (e) {
+                    console.error('Portal init error:', e);
+                }
+            }
+
+            async function loadStatus() {
+                const res = await fetch('/api/timetable/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                const chip = document.getElementById('portal-status-chip');
+                const notice = document.getElementById('portal-notice');
+                const isPublished = Boolean(data && data.is_published);
+
+                if (chip) {
+                    chip.textContent = isPublished ? 'Published' : 'Draft';
+                    chip.className = isPublished ? 'lifecycle-chip chip-published' : 'lifecycle-chip chip-draft';
+                }
+
+                if (notice) {
+                    notice.style.display = 'block';
+                    if (isPublished) {
+                        notice.className = 'portal-notice-banner notice-published';
+                        notice.innerHTML = `<strong>Official Schedule:</strong> Published for ${data.term || 'Academic Term'} (${data.published_at || 'Verified'}).`;
+                    } else {
+                        notice.className = 'portal-notice-banner notice-draft';
+                        notice.innerHTML = `<strong>Notice:</strong> The schedule for ${data.term || 'this term'} is currently under administrative draft review.`;
+                    }
+                }
+            }
+
+            async function loadTerms() {
+                const res = await fetch('/api/terms');
+                if (!res.ok) return;
+                const data = await res.json();
+                const sel = document.getElementById('portal-term-select');
+                if (sel) {
+                    sel.innerHTML = (data.terms || []).map(t =>
+                        `<option value="${t.id}" ${t.id === data.active_term_id ? 'selected' : ''}>${t.name}</option>`
+                    ).join('');
+                }
+            }
+
+            async function loadConfigAndSlots() {
+                try {
+                    const [cfgRes, tsRes] = await Promise.all([
+                        fetch('/api/config'),
+                        fetch('/api/time-slots')
+                    ]);
+                    if (cfgRes.ok) appConfig = await cfgRes.json();
+                    if (tsRes.ok) appTimeSlots = await tsRes.json();
+                    else appTimeSlots = [];
+                } catch (e) {
+                    appTimeSlots = [];
+                }
+            }
+
+            async function loadAssignments() {
+                const res = await fetch('/api/timetable/master');
+                if (res.ok) {
+                    allAssignments = await res.json();
+                    populateDropdown();
+                } else {
+                    document.getElementById('portal-timetable-content').innerHTML = `
+                        <div class="empty-state">
+                            <p>No timetable schedule available for this academic term yet.</p>
+                        </div>
+                    `;
+                }
+            }
+
+            function setupViewTabs() {
+                document.querySelectorAll('.view-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                        activeView = e.target.getAttribute('data-view');
+                        populateDropdown();
+                    });
+                });
+
+                const selector = document.getElementById('portal-entity-selector');
+                if (selector) {
+                    selector.addEventListener('change', renderGrid);
+                }
+            }
+
+            function populateDropdown() {
+                const selector = document.getElementById('portal-entity-selector');
+                if (!selector) return;
+
+                if (activeView === 'master') {
+                    selector.style.display = 'none';
+                    renderGrid();
+                    return;
+                }
+
+                selector.style.display = 'inline-block';
+                selector.innerHTML = '';
+
+                if (activeView === 'section') {
+                    const secMap = {};
+                    allAssignments.forEach(a => {
+                        if (a.section_id) secMap[a.section_id] = a.section_name || a.section_id;
+                    });
+                    const keys = Object.keys(secMap).sort();
+                    keys.forEach(k => {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.textContent = `Section: ${secMap[k]}`;
+                        selector.appendChild(opt);
+                    });
+                } else if (activeView === 'faculty') {
+                    const facMap = {};
+                    allAssignments.forEach(a => {
+                        if (a.faculty_ids) {
+                            a.faculty_ids.forEach(fid => {
+                                facMap[fid] = a.faculty_name || fid;
+                            });
+                        }
+                    });
+                    const keys = Object.keys(facMap).sort();
+                    keys.forEach(k => {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.textContent = `Instructor: ${facMap[k]}`;
+                        selector.appendChild(opt);
+                    });
+                } else if (activeView === 'room') {
+                    const roomMap = {};
+                    allAssignments.forEach(a => {
+                        if (a.room_id) roomMap[a.room_id] = a.room_name || a.room_id;
+                    });
+                    const keys = Object.keys(roomMap).sort();
+                    keys.forEach(k => {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.textContent = `Room: ${roomMap[k]}`;
+                        selector.appendChild(opt);
+                    });
+                }
+
+                renderGrid();
+            }
+
+            function renderGrid() {
+                const container = document.getElementById('portal-timetable-content');
+                if (!container) return;
+                if (!appConfig || !Array.isArray(appTimeSlots) || appTimeSlots.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>Schedule configuration is not available yet.</p></div>';
+                    return;
+                }
+
+                if (!allAssignments || allAssignments.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No timetable data available for this view.</p></div>';
+                    return;
+                }
+
+                const selector = document.getElementById('portal-entity-selector');
+                const selectedVal = selector ? selector.value : null;
+
+                const btnIcs = document.getElementById('portal-btn-ics');
+                if (btnIcs) {
+                    if (activeView === 'faculty' && selectedVal) {
+                        btnIcs.style.display = 'inline-flex';
+                        btnIcs.href = `/api/faculty/${encodeURIComponent(selectedVal)}/calendar.ics`;
+                    } else {
+                        btnIcs.style.display = 'none';
+                    }
+                }
+
+                let filtered = allAssignments;
+                if (activeView === 'section' && selectedVal) {
+                    filtered = allAssignments.filter(a => a.section_id === selectedVal);
+                } else if (activeView === 'faculty' && selectedVal) {
+                    filtered = allAssignments.filter(a => (a.faculty_ids && a.faculty_ids.includes(selectedVal)) || a.faculty_id === selectedVal);
+                } else if (activeView === 'room' && selectedVal) {
+                    filtered = allAssignments.filter(a => a.room_id === selectedVal);
+                }
+
+                // Apply query search filter if present
+                const query = (document.getElementById('portal-search-box')?.value || '').trim().toLowerCase();
+
+                const days = appConfig.working_days || [];
+                const timeline = buildTimeline(appConfig, appTimeSlots);
+
+                let uniqueSections = [];
+                if (activeView === 'master') {
+                    const secMap = {};
+                    allAssignments.forEach(a => { secMap[a.section_id] = a.section_name || a.section_id; });
+                    uniqueSections = Object.keys(secMap).sort().map(id => ({ id: id, name: secMap[id] }));
+                }
+
+                const rowGroups = [];
+                days.forEach(day => {
+                    if (activeView === 'master') {
+                        uniqueSections.forEach((sec, idx) => {
+                            rowGroups.push({
+                                day: day,
+                                rowLabel: sec.name,
+                                filterVal: sec.id,
+                                isFirstOfGroup: idx === 0,
+                                groupSize: uniqueSections.length
+                            });
+                        });
+                    } else {
+                        rowGroups.push({ day: day, rowLabel: day, filterVal: null, isFirstOfGroup: true, groupSize: 1 });
+                    }
+                });
+
+                const table = document.createElement('table');
+                table.className = 'timetable-grid';
+
+                const thead = document.createElement('thead');
+                const headRow = document.createElement('tr');
+                if (activeView === 'master') {
+                    headRow.innerHTML = '<th>Day</th><th>Section</th>';
+                } else {
+                    headRow.innerHTML = '<th>Day / Period</th>';
+                }
+
+                timeline.forEach(col => {
+                    const th = document.createElement('th');
+                    th.innerHTML = col.type === 'break' ? (col.is_lunch ? 'Lunch' : 'Break') : `${col.start_time} - ${col.end_time}`;
+                    headRow.appendChild(th);
+                });
+                thead.appendChild(headRow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                rowGroups.forEach(grp => {
+                    const tr = document.createElement('tr');
+                    if (activeView === 'master') {
+                        if (grp.isFirstOfGroup) {
+                            tr.innerHTML += `<td rowspan="${grp.groupSize}" class="tt-cell-day">${grp.day}</td>`;
+                        }
+                        tr.innerHTML += `<td class="tt-cell-sec">${grp.rowLabel}</td>`;
+                    } else {
+                        tr.innerHTML += `<td class="tt-cell-day">${grp.rowLabel}</td>`;
+                    }
+
+                    const rowAssignments = activeView === 'master'
+                        ? filtered.filter(a => a.day === grp.day && a.section_id === grp.filterVal)
+                        : filtered.filter(a => a.day === grp.day);
+
+                    let skipCount = 0;
+                    timeline.forEach((col, idx) => {
+                        if (skipCount > 0) {
+                            skipCount--;
+                            return;
+                        }
+
+                        if (col.type === 'break') {
+                            tr.innerHTML += `<td class="tt-cell-break">${col.is_lunch ? 'L U N C H' : 'B R E A K'}</td>`;
+                            return;
+                        }
+
+                        const sessions = rowAssignments.filter(a => a.time_start === col.start_time);
+                        if (sessions.length === 0) {
+                            tr.innerHTML += '<td class="tt-cell-empty"></td>';
+                        } else {
+                            const maxDuration = Math.max(...sessions.map(s => s.duration_slots || 1));
+                            skipCount = maxDuration - 1;
+                            const isLab = sessions.some(s => s.course_type === 'LAB');
+                            const cellClass = isLab ? 'tt-cell-lab' : 'tt-cell-theory';
+
+                            const htmlArr = sessions.map(s => {
+                                const bBadge = (s.batch_name && s.batch_name !== 'ALL') ? `<span class="tt-batch">${s.batch_name}</span>` : '';
+                                const meta = [];
+                                if (activeView !== 'section') meta.push(s.section_name || s.section_id);
+                                if (activeView !== 'faculty') meta.push(s.faculty_name);
+                                if (activeView !== 'room') meta.push(s.room_name);
+
+                                const matches = query && (
+                                    (s.course_name && s.course_name.toLowerCase().includes(query)) ||
+                                    (s.course_code && s.course_code.toLowerCase().includes(query)) ||
+                                    (s.faculty_name && s.faculty_name.toLowerCase().includes(query)) ||
+                                    (s.room_name && s.room_name.toLowerCase().includes(query))
+                                );
+
+                                const highlightStyle = matches ? 'outline: 2px solid var(--color-focus); outline-offset: 1px;' : '';
+
+                                return `
+                                    <div class="tt-session-card" style="${highlightStyle}">
+                                        <div class="tt-subj">${s.course_name} ${bBadge}</div>
+                                        <div class="tt-meta">${meta.join(' | ')}</div>
+                                    </div>
+                                `;
+                            });
+
+                            tr.innerHTML += `<td colspan="${maxDuration}" class="${cellClass}">${htmlArr.join('')}</td>`;
+                        }
+                    });
+                    tbody.appendChild(tr);
+                });
+
+                table.appendChild(tbody);
+                container.innerHTML = '';
+                const scrollWrapper = document.createElement('div');
+                scrollWrapper.className = 'table-scroll';
+                scrollWrapper.appendChild(table);
+                container.appendChild(scrollWrapper);
+            }
+
+            function buildTimeline(config, timeSlots) {
+                if (!config) return [];
+                const cols = [];
+                const breaks = [...(config.breaks || [])];
+                if (config.lunch_start && config.lunch_end) {
+                    breaks.push({ start_time: config.lunch_start, end_time: config.lunch_end, is_lunch: true });
+                }
+                breaks.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+                const safeSlots = Array.isArray(timeSlots) ? timeSlots : [];
+                const sortedSlots = [...safeSlots].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+                const all = [];
+                sortedSlots.forEach(s => all.push({ type: 'slot', ...s }));
+                breaks.forEach(b => all.push({ type: 'break', ...b }));
+                all.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+                return all;
+            }
+
+            function setupSearch() {
+                const searchBox = document.getElementById('portal-search-box');
+                if (searchBox) {
+                    searchBox.addEventListener('input', renderGrid);
+                }
+            }
+
+            window.addEventListener('DOMContentLoaded', initPortal);
+        })();
+    </script>
+
+</body>
+
+</html>

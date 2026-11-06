@@ -1,523 +1,982 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="js">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoSchedule — Academic Timetable System</title>
+    <title>AutoSchedule: Academic Timetable System</title>
+    <meta name="description" content="Constraint-based academic timetable scheduler powered by deterministic backtracking CSP.">
+    <link rel="preconnect" href="https://api.fontshare.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/tokens.css">
+    <link rel="stylesheet" href="/static/base.css">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        /* Hallmark: 2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active, .btn:active, a[role="button"]:active { transform: translateY(1px); }
+        button:disabled, .btn:disabled, input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
 </head>
 
 <body>
 
-    <header>
-        <div class="header-inner">
-            <div class="header-logo">
-                <div class="logo-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg></div>
+    <!-- Top Masthead Header -->
+    <header class="app-header">
+        <div class="container header-inner">
+            <a href="/" class="header-brand" aria-label="AutoSchedule Home">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
                 <div class="header-text">
                     <h1>AutoSchedule</h1>
-                    <span class="header-subtitle">Academic Timetable Scheduling System</span>
+                    <span class="header-subtitle">Constraint Timetable System</span>
                 </div>
+            </a>
+
+            <nav class="header-nav" aria-label="Product Navigation">
+                <a href="#landing-section" class="nav-link active" id="nav-link-overview">Overview</a>
+                <a href="#workbench-section" class="nav-link" id="nav-link-workbench">Workbench</a>
+                <a href="/portal" class="nav-link">Student Portal</a>
+                <a href="#pricing-section" class="nav-link" id="nav-link-pricing">Pricing</a>
+            </nav>
+
+            <div class="header-meta">
+                <select id="header-term-select" class="header-term-selector" aria-label="Select Active Academic Term"></select>
+                <span id="header-lifecycle-chip" class="lifecycle-chip chip-draft">Draft</span>
+                <span id="header-user-badge" class="lifecycle-chip chip-draft" style="display: none;">Guest</span>
+                <button type="button" id="btn-auth-action" class="btn btn-sm btn-outline">Sign In</button>
+                <span class="system-status-chip">Deterministic CSP</span>
             </div>
         </div>
     </header>
 
-    <nav class="tabs">
-        <button class="tab-btn active" data-target="config">Configuration</button>
-        <button class="tab-btn" data-target="rooms">Rooms</button>
-        <button class="tab-btn" data-target="faculty">Faculty</button>
-        <button class="tab-btn" data-target="sections">Sections</button>
-        <button class="tab-btn" data-target="courses">Courses</button>
-        <button class="tab-btn" data-target="generate">Generate</button>
-        <button class="tab-btn" data-target="views">Timetable Views</button>
-    </nav>
-
     <main id="content">
 
-        <!-- Configuration Tab -->
-        <section id="config" class="tab-content active">
-            <div class="page-header">
-                <div>
-                    <h2>System Configuration</h2>
-                    <p class="page-desc">Set working hours, breaks, and time slot duration before adding data.</p>
+        <!-- ================================================================= -->
+        <!-- 1. COMMERCIAL LANDING PAGE (Front Page)                           -->
+        <!-- ================================================================= -->
+        <section id="landing-section" class="landing-section container">
+            <div class="landing-hero">
+                <h2 class="hero-headline">Zero-conflict academic timetables for modern universities</h2>
+                <p class="hero-sentence">
+                    Pure-Python constraint satisfaction engine with automated conflict prevention, faculty workload balancing, and multi-candidate generation.
+                </p>
+                <div class="hero-actions">
+                    <button type="button" id="btn-hero-launch-workbench" class="btn btn-primary btn-lg">Open Planner Workbench</button>
+                    <a href="/portal" class="btn btn-outline btn-lg">Browse Student Schedules</a>
+                    <a href="#pricing-section" class="btn btn-outline btn-lg">Campus Licensing</a>
                 </div>
-                <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <select id="demo-scenario-select" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 500; background: #fff; cursor: pointer; color: var(--text-dark);">
-                        <option value="standard">Case 1: Standard Academic Load (Balanced)</option>
-                        <option value="bottleneck">Case 2: Resource Bottleneck (High Contention)</option>
-                        <option value="infeasible">Case 3: Infeasible Conflict (Stress Test)</option>
-                        <option value="single_section">Case 4: Single Section (Viva Walkthrough)</option>
-                    </select>
-                    <button id="btn-load-demo" class="btn success">
-                        Load Demo Data
-                    </button>
-                    <button id="btn-clear-data" class="btn danger">
-                        Clear All Data
-                    </button>
+
+                <div class="hero-proof-band">
+                    <div class="proof-item">
+                        <h4>Hard Constraints</h4>
+                        <p>Zero cohort clashes, room collisions, or faculty double-bookings enforced mathematically.</p>
+                    </div>
+                    <div class="proof-item">
+                        <h4>Relational Schema</h4>
+                        <p>15 normalized tables in 3NF with foreign keys, cascades, and ACID transactions.</p>
+                    </div>
+                    <div class="proof-item">
+                        <h4>Live Calendar Sync</h4>
+                        <p>RFC 5545 iCalendar stream subscriptions for Google Calendar and Apple Calendar.</p>
+                    </div>
+                    <div class="proof-item">
+                        <h4>Offline PWA</h4>
+                        <p>Cache-first service worker delivering instantaneous mobile timetable lookup.</p>
+                    </div>
                 </div>
             </div>
 
-            <div class="card">
-                <form id="form-config">
-                    <div class="form-group">
-                        <label>Working Days</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Monday">
-                                Monday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Tuesday">
-                                Tuesday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Wednesday">
-                                Wednesday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Thursday">
-                                Thursday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Friday">
-                                Friday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Saturday">
-                                Saturday</label>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="start_time">Start Time</label>
-                            <input type="time" id="start_time" name="start_time" value="09:00" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="end_time">End Time</label>
-                            <input type="time" id="end_time" name="end_time" value="17:00" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="slot_duration_minutes">Slot Duration (min)</label>
-                            <input type="number" id="slot_duration_minutes" name="slot_duration_minutes" value="60"
-                                required>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="lunch_start">Lunch Start</label>
-                            <input type="time" id="lunch_start" name="lunch_start" value="13:00" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="lunch_end">Lunch End</label>
-                            <input type="time" id="lunch_end" name="lunch_end" value="14:00" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Extra Breaks</label>
-                        <div id="breaks-container"></div>
-                        <button type="button" id="btn-add-break" class="btn btn-sm">+ Add Break</button>
-                    </div>
-
-                    <button type="submit" class="btn primary" style="margin-top: 8px;">Save Configuration</button>
-                </form>
+            <!-- Features & Architecture Grid -->
+            <div class="section-head">
+                <h2>Engine Architecture</h2>
+                <p>Engineered for complex institutional scheduling constraints and accrediting standards.</p>
             </div>
 
-            <div class="card" id="time-slots-display">
-                <h3>Generated Time Slots</h3>
-                <ul id="time-slots-list" class="slot-list"></ul>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>Deterministic CSP Solver</h3>
+                    <p>Backtracking search paired with Minimum Remaining Values (MRV) and degree heuristics generates complete weekly schedules without stochastic drift.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Transactional Seam & Atomic Swaps</h3>
+                    <p>Interactive move and swap validator testing all 6 hard constraints prior to committing. Failed adjustments safely roll back without partial state corruption.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Snapshot Rollback Governance</h3>
+                    <p>Track versioned schedule snapshots with soft constraint percentage metrics. Restoring an earlier candidate automatically reverts published state to draft.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Role-Scoped Access Isolation</h3>
+                    <p>Rigorous server-side authorization: students view published schedules, faculty access personal workloads, and coordinators manage institutional resources.</p>
+                </div>
+            </div>
+
+            <!-- Pricing & Campus Licensing Section -->
+            <div id="pricing-section" class="section-head">
+                <h2>Institutional Campus Licensing</h2>
+                <p>Transparent pricing designed for academic departments and university-wide deployments.</p>
+            </div>
+
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div>
+                        <div class="pricing-tier">Departmental Edition</div>
+                        <div class="pricing-price">$1,200 <span>/ academic year</span></div>
+                        <p class="pricing-desc">For individual academic departments requiring autonomous scheduling and local room allocation.</p>
+                        <ul class="pricing-features">
+                            <li>Up to 25 faculty members</li>
+                            <li>Up to 10 classrooms and specialized laboratories</li>
+                            <li>Full CSP deterministic solving engine</li>
+                            <li>Interactive move and swap editor</li>
+                            <li>Excel workbook data import and export</li>
+                            <li>Student public schedule portal</li>
+                        </ul>
+                    </div>
+                    <button type="button" class="btn btn-outline" onclick="openAuthModal()">Get Started</button>
+                </div>
+
+                <div class="pricing-card featured">
+                    <div>
+                        <div class="pricing-tier">University Campus Enterprise</div>
+                        <div class="pricing-price">$4,800 <span>/ academic year</span></div>
+                        <p class="pricing-desc">Comprehensive institution-wide timetable orchestration with centralized room pooling and calendar feeds.</p>
+                        <ul class="pricing-features">
+                            <li>Unlimited departments, faculty, and student cohorts</li>
+                            <li>Multi-building classroom and lab allocation</li>
+                            <li>Personalized faculty RFC 5545 iCalendar feeds</li>
+                            <li>Schedule version snapshots and governance rollbacks</li>
+                            <li>Real-time change alert notification ledger</li>
+                            <li>Institutional room utilization and workload analytics</li>
+                            <li>PostgreSQL enterprise database support</li>
+                        </ul>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="openAuthModal()">Deploy Campus Enterprise</button>
+                </div>
             </div>
         </section>
 
-        <!-- Rooms Tab -->
-        <section id="rooms" class="tab-content">
+        <!-- ================================================================= -->
+        <!-- 2. FACULTY SELF-SERVICE DASHBOARD                                 -->
+        <!-- ================================================================= -->
+        <section id="faculty-dashboard-section" class="container" style="display: none; padding-top: var(--space-xl);">
             <div class="page-header">
                 <div>
-                    <h2>Rooms</h2>
-                    <p class="page-desc">Add theory classrooms and lab rooms with their capacities.</p>
+                    <h2 class="page-title" id="faculty-welcome-title">Faculty Schedule & Workload</h2>
+                    <p class="page-desc">Your personal teaching assignments, contact hours balance, and calendar subscription.</p>
+                </div>
+                <div class="actions">
+                    <button type="button" id="btn-faculty-ics" class="btn btn-primary" style="white-space: nowrap;">Subscribe Calendar (.ics)</button>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add New Room</h3>
-                <form id="form-room" class="add-form">
-                    <input type="text" id="room_id" placeholder="Room ID (e.g. R101)" required>
-                    <input type="text" id="room_name" placeholder="Display Name" required>
-                    <select id="room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <input type="number" id="room_capacity" placeholder="Capacity (optional)">
-                    <input type="text" id="room_category" placeholder="Category (optional)">
-                    <button type="submit" class="btn primary">Add Room</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-rooms">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Capacity</th>
-                            <th>Category</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
 
-        <!-- Faculty Tab -->
-        <section id="faculty" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Faculty</h2>
-                    <p class="page-desc">Register faculty members who will be assigned to courses.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add New Faculty</h3>
-                <form id="form-faculty" class="add-form">
-                    <input type="text" id="faculty_id" placeholder="Faculty ID (e.g. F1)" required>
-                    <input type="text" id="faculty_name" placeholder="Full Name" required>
-                    <button type="submit" class="btn primary">Add Faculty</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-faculty">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Sections Tab -->
-        <section id="sections" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Sections &amp; Batches</h2>
-                    <p class="page-desc">Define class sections and their lab batches.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Section</h3>
-                <form id="form-section" class="add-form">
-                    <input type="text" id="section_id" placeholder="Section ID (e.g. 3A)" required>
-                    <input type="text" id="section_name" placeholder="Name" required>
-                    <input type="number" id="section_semester" placeholder="Semester" required>
-                    <input type="text" id="section_division" placeholder="Division" required>
-                    <input type="number" id="section_strength" placeholder="Strength (optional)">
-                    <button type="submit" class="btn primary">Add Section</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-sections">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Semester</th>
-                            <th>Division</th>
-                            <th>Strength</th>
-                            <th>Batches</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Lab Batch</h3>
-                <form id="form-batch" class="add-form">
-                    <input type="text" id="batch_id" placeholder="Batch ID (e.g. A1)" required>
-                    <input type="text" id="batch_name" placeholder="Batch Name" required>
-                    <select id="batch_section" required>
-                        <option value="">Select Section</option>
-                    </select>
-                    <input type="number" id="batch_strength" placeholder="Batch Strength" required>
-                    <button type="submit" class="btn primary">Add Batch</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- Courses Tab -->
-        <section id="courses" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Courses</h2>
-                    <p class="page-desc">Define courses with L-T-P credits, faculty, and room requirements.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Course</h3>
-                <form id="form-course" class="add-form complex-form">
-                    <input type="text" id="course_id" placeholder="Course ID (e.g. CS301_3A)" required>
-                    <input type="text" id="course_name" placeholder="Course Name" required>
-                    <input type="text" id="course_code" placeholder="Course Code" required>
-                    <select id="course_section" required>
-                        <option value="">Select Section</option>
-                    </select>
-
-                    <div class="ltp-inputs">
-                        <input type="number" step="0.5" id="course_l" placeholder="L (Lectures)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_t" placeholder="T (Tutorials)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_p" placeholder="P (Practicals)" value="0" min="0"
-                            required>
+            <div class="surface-card">
+                <div class="form-row">
+                    <div>
+                        <div class="form-label">Weekly Contact Hours</div>
+                        <div style="font-size: var(--text-2xl); font-weight: 600;" id="faculty-workload-hours">0.0 hrs</div>
+                        <div class="form-hint">Institutional target: 16.0 to 20.0 teaching hours per week</div>
                     </div>
+                    <div>
+                        <div class="form-label">Assigned Courses</div>
+                        <div style="font-size: var(--text-lg); font-weight: 500;" id="faculty-course-count">0 courses</div>
+                        <div class="form-hint" id="faculty-course-names">-</div>
+                    </div>
+                    <div>
+                        <div class="form-label">Calendar Feed URL</div>
+                        <input type="text" id="faculty-ics-url-display" readonly style="width: 100%; font-family: var(--font-outlier); font-size: var(--text-xs);">
+                    </div>
+                </div>
+            </div>
 
-                    <div class="faculty-selects">
+            <div class="surface-card">
+                <h3>Personal Weekly Schedule</h3>
+                <div class="tt-grid-wrapper" style="margin-top: var(--space-md);">
+                    <div id="faculty-personal-timetable-container"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================================================================= -->
+        <!-- 3. ADMINISTRATOR & COORDINATOR SCHEDULING WORKBENCH               -->
+        <!-- ================================================================= -->
+        <section id="workbench-section" class="container" style="padding-top: var(--space-xl);">
+            
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Scheduling Workbench</h2>
+                    <p class="page-desc">Configure academic terms, institutional resources, execute CSP solvers, and review conflict-free schedules.</p>
+                </div>
+                <div class="actions" style="display: flex; gap: var(--space-xs); flex-wrap: wrap;">
+                    <button id="btn-version-history" class="btn btn-outline btn-sm">Version History</button>
+                    <button id="btn-change-alerts" class="btn btn-outline btn-sm">Change Log</button>
+                    <button id="btn-reports-analytics" class="btn btn-outline btn-sm">Utilization Report</button>
+                    <button id="btn-header-snapshot" class="btn btn-primary btn-sm">Save Snapshot</button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation Groove -->
+            <div class="tabs-groove" style="margin-bottom: var(--space-lg);">
+                <button class="tab-btn active" data-target="config">Configuration</button>
+                <button class="tab-btn" data-target="rooms">Rooms</button>
+                <button class="tab-btn" data-target="faculty">Faculty</button>
+                <button class="tab-btn" data-target="sections">Sections</button>
+                <button class="tab-btn" data-target="courses">Courses</button>
+                <button class="tab-btn" data-target="generate">Generate</button>
+                <button class="tab-btn" data-target="views">Timetable Views</button>
+                <button class="tab-btn" data-target="theory">Theory & Defense</button>
+            </div>
+
+            <!-- TAB 1: Configuration -->
+            <div id="config" class="tab-content active">
+                <div class="surface-card">
+                    <div class="page-header" style="margin-bottom: var(--space-md);">
                         <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Main Faculty (Ctrl+click for
-                                multiple)</label>
-                            <select id="course_faculty" multiple required style="height: 90px; width:100%;"></select>
+                            <h3>Academic Timing & Working Hours</h3>
+                            <p class="page-desc">Define standard daily instructional slots, start time, and lunch breaks.</p>
                         </div>
+                        <div class="actions">
+                            <select id="demo-scenario-select" aria-label="Select demo scenario">
+                                <option value="standard">Case 1: Standard Academic Load (Balanced)</option>
+                                <option value="bottleneck">Case 2: Resource Bottleneck (High Contention)</option>
+                                <option value="infeasible">Case 3: Infeasible Conflict (Stress Test)</option>
+                                <option value="single_section">Case 4: Single Section (Viva Walkthrough)</option>
+                            </select>
+                            <button id="btn-load-demo" class="btn btn-success btn-sm">Load Demo</button>
+                            <button id="btn-open-import" class="btn btn-outline btn-sm">Import Excel</button>
+                            <a href="/api/import/template" class="btn btn-outline btn-sm" download>Template</a>
+                            <button id="btn-clear-data" class="btn btn-danger btn-sm">Clear Data</button>
+                        </div>
+                    </div>
+
+                    <form id="form-config">
+                        <div class="form-group">
+                            <label class="form-label">Working Days</label>
+                            <div style="display: flex; gap: var(--space-xs); flex-wrap: wrap;">
+                                <label><input type="checkbox" name="working_days" value="Monday"> Monday</label>
+                                <label><input type="checkbox" name="working_days" value="Tuesday"> Tuesday</label>
+                                <label><input type="checkbox" name="working_days" value="Wednesday"> Wednesday</label>
+                                <label><input type="checkbox" name="working_days" value="Thursday"> Thursday</label>
+                                <label><input type="checkbox" name="working_days" value="Friday"> Friday</label>
+                                <label><input type="checkbox" name="working_days" value="Saturday"> Saturday</label>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="start_time">Start Time</label>
+                                <input type="time" id="start_time" name="start_time" value="09:00" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="end_time">End Time</label>
+                                <input type="time" id="end_time" name="end_time" value="17:00" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="slot_duration_minutes">Slot Duration (min)</label>
+                                <input type="number" id="slot_duration_minutes" name="slot_duration_minutes" value="60" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="lunch_start">Lunch Start</label>
+                                <input type="time" id="lunch_start" name="lunch_start" value="13:00" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="lunch_end">Lunch End</label>
+                                <input type="time" id="lunch_end" name="lunch_end" value="14:00" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Additional Recess Breaks</label>
+                            <div id="breaks-container"></div>
+                            <button type="button" id="btn-add-break" class="btn btn-sm btn-outline">+ Add Break</button>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    </form>
+                </div>
+
+                <div class="surface-card">
+                    <h3>Generated Daily Time Slots</h3>
+                    <div id="time-slots-list" class="form-hint" style="margin-top: var(--space-xs); line-height: 1.8;"></div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Rooms -->
+            <div id="rooms" class="tab-content">
+                <div class="surface-card">
+                    <h3>Register Classroom or Laboratory</h3>
+                    <form id="form-room" style="margin-top: var(--space-md);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="room_id">Room Code</label>
+                                <input type="text" id="room_id" name="id" placeholder="e.g. R101, L102" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="room_name">Display Name</label>
+                                <input type="text" id="room_name" name="name" placeholder="e.g. Lecture Hall 101" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="room_type">Facility Type</label>
+                                <select id="room_type" name="room_type" required>
+                                    <option value="THEORY_ROOM">Theory Classroom</option>
+                                    <option value="LAB">Computer/Hardware Lab</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="room_capacity">Seating Capacity</label>
+                                <input type="number" id="room_capacity" name="capacity" value="60" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="room_category">Category Tag</label>
+                                <input type="text" id="room_category" name="category" placeholder="e.g. Core, Elective">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Add Room</button>
+                    </form>
+                </div>
+
+                <div class="surface-card">
+                    <h3>Active Institutional Facilities</h3>
+                    <div class="table-container" style="margin-top: var(--space-md);">
+                        <table id="table-rooms" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Capacity</th>
+                                    <th>Category</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rooms-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Faculty -->
+            <div id="faculty" class="tab-content">
+                <div class="surface-card">
+                    <h3>Register Faculty Member</h3>
+                    <form id="form-faculty" style="margin-top: var(--space-md);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="faculty_id">Faculty Identifier</label>
+                                <input type="text" id="faculty_id" name="id" placeholder="e.g. FAC001" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="faculty_name">Full Name</label>
+                                <input type="text" id="faculty_name" name="name" placeholder="e.g. Dr. Sarah Jenkins" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Add Faculty</button>
+                    </form>
+                </div>
+
+                <div class="surface-card">
+                    <h3>Faculty Roster & Availability</h3>
+                    <div class="table-container" style="margin-top: var(--space-md);">
+                        <table id="table-faculty" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Available Days</th>
+                                    <th>Unavailability Windows</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="faculty-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Sections -->
+            <div id="sections" class="tab-content">
+                <div class="surface-card">
+                    <h3>Create Student Section</h3>
+                    <form id="form-section" style="margin-top: var(--space-md);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="section_id">Section ID</label>
+                                <input type="text" id="section_id" name="id" placeholder="e.g. 3A, 5B" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="section_name">Cohort Name</label>
+                                <input type="text" id="section_name" name="name" placeholder="e.g. CSE 3rd Sem Division A" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="section_semester">Semester</label>
+                                <input type="number" id="section_semester" name="semester" value="3" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="section_division">Division</label>
+                                <input type="text" id="section_division" name="division" value="A" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="section_strength">Student Count</label>
+                                <input type="number" id="section_strength" name="strength" value="60" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Add Section</button>
+                    </form>
+                </div>
+
+                <div class="surface-card">
+                    <h3>Student Sections</h3>
+                    <div class="table-container" style="margin-top: var(--space-md);">
+                        <table id="table-sections" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Semester</th>
+                                    <th>Division</th>
+                                    <th>Strength</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sections-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Laboratory Batches -->
+                <div class="surface-card">
+                    <h3>Laboratory Sub-Batches</h3>
+                    <form id="form-batch" style="margin-top: var(--space-md);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="batch_id">Batch Identifier</label>
+                                <input type="text" id="batch_id" name="id" placeholder="e.g. 3A1, 3A2" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="batch_name">Batch Name</label>
+                                <input type="text" id="batch_name" name="name" placeholder="e.g. Batch A1" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="batch_section">Parent Section</label>
+                                <select id="batch_section" name="section_id" required></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="batch_strength">Batch Strength</label>
+                                <input type="number" id="batch_strength" name="strength" value="30" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Add Batch</button>
+                    </form>
+
+                    <div class="table-container" style="margin-top: var(--space-md);">
+                        <table id="table-batches" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Section</th>
+                                    <th>Strength</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="batches-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: Courses -->
+            <div id="courses" class="tab-content">
+                <div class="surface-card">
+                    <h3>Curriculum Course Catalog</h3>
+                    <form id="form-course" style="margin-top: var(--space-md);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="course_id">Course ID</label>
+                                <input type="text" id="course_id" name="id" placeholder="e.g. CS301_3A" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_code">Subject Code</label>
+                                <input type="text" id="course_code" name="code" placeholder="e.g. CS301" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_name">Course Title</label>
+                                <input type="text" id="course_name" name="name" placeholder="e.g. Data Structures" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_section">Assigned Section</label>
+                                <select id="course_section" name="section_id" required></select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="course_l">Lecture Hours (L)</label>
+                                <input type="number" id="course_l" name="l" value="3" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_t">Tutorial Hours (T)</label>
+                                <input type="number" id="course_t" name="t" value="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_p">Practical/Lab Hours (P)</label>
+                                <input type="number" id="course_p" name="p" value="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_room_type">Room Requirement</label>
+                                <select id="course_room_type" name="room_type" required>
+                                    <option value="THEORY_ROOM">Theory Room</option>
+                                    <option value="LAB">Laboratory</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="course_faculty">Lead Instructor</label>
+                                <select id="course_faculty" name="faculty_ids" required></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_assistant_faculty">Assistant Instructors</label>
+                                <select id="course_assistant_faculty" name="assistant_faculty_ids" multiple></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_required_room">Specific Room (Optional)</label>
+                                <select id="course_required_room" name="required_room_id"></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_lab_batches">Lab Batches (If Practical)</label>
+                                <select id="course_lab_batches" name="lab_batches" multiple></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="course_lab_duration">Lab Block Duration</label>
+                                <input type="number" id="course_lab_duration" name="lab_duration_slots" value="2">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-sm">Add Course</button>
+                    </form>
+                </div>
+
+                <div class="surface-card">
+                    <h3>Active Course Offerings</h3>
+                    <div class="table-container" style="margin-top: var(--space-md);">
+                        <table id="table-courses" class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Code</th>
+                                    <th>Title</th>
+                                    <th>Section</th>
+                                    <th>L-T-P</th>
+                                    <th>Lab Batches</th>
+                                    <th>Faculty</th>
+                                    <th>Assistants</th>
+                                    <th>Room Type</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="courses-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: Generate -->
+            <div id="generate" class="tab-content">
+                <div class="surface-card">
+                    <div class="page-header" style="margin-bottom: var(--space-md);">
                         <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Assistant Faculty
-                                (Optional)</label>
-                            <select id="course_assistant_faculty" multiple style="height: 90px; width:100%;"></select>
+                            <h3>Constraint Satisfaction Solver</h3>
+                            <p class="page-desc">Execute pure-Python deterministic backtracking CSP solver with MRV and degree heuristics.</p>
+                        </div>
+                        <div class="actions">
+                            <button id="btn-generate" class="btn btn-primary">Solve Primary Schedule</button>
+                            <button id="btn-generate-multiple" class="btn btn-outline" style="white-space: nowrap;">Generate Multiple Candidates</button>
+                            <button id="btn-validate" class="btn btn-outline btn-sm">Verify Hard Constraints</button>
                         </div>
                     </div>
 
-                    <select id="course_room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <select id="course_required_room">
-                        <option value="">Required Room (Optional)</option>
-                    </select>
+                    <div id="generate-status" style="margin-bottom: var(--space-md);"></div>
 
-                    <select id="course_lab_batches" multiple style="display: none; height: 90px;"
-                        title="Hold Ctrl/Cmd to select multiple">
-                    </select>
-
-                    <button type="submit" class="btn primary">Add Course</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-courses">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Code</th>
-                            <th>Name</th>
-                            <th>Section</th>
-                            <th>L-T-P</th>
-                            <th>Batches</th>
-                            <th>Faculty</th>
-                            <th>Asst Faculty</th>
-                            <th>Room Type</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Generate Tab -->
-        <section id="generate" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Generate Timetable</h2>
-                    <p class="page-desc">Run the CSP backtracking solver to produce a conflict-free timetable.</p>
-                </div>
-            </div>
-
-            <div class="algo-info card">
-                <div class="algo-info-grid">
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">6</div>
-                        <div class="algo-stat-label">Hard Constraints</div>
+                    <!-- Diagnostics Card -->
+                    <div id="gen-status-card" class="surface-card-plain" style="display: none; background: var(--color-paper-2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-xs);">
+                            <span id="gen-status-text" style="font-weight: 600;">Status: Ready</span>
+                            <span id="gen-score" style="font-family: var(--font-outlier); font-size: var(--text-lg);">Score: 0%</span>
+                        </div>
+                        <div id="gen-diagnostics" style="margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--color-muted);"></div>
                     </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">7</div>
-                        <div class="algo-stat-label">Soft Constraints</div>
+
+                    <!-- Hard Constraint Verification Report -->
+                    <div id="validation-report" class="surface-card-plain" style="display: none; margin-top: var(--space-md); background: var(--color-paper-2);">
+                        <h4 style="margin-bottom: var(--space-xs);">Hard Constraint Verification</h4>
+                        <div id="val-content" style="font-size: var(--text-xs);"></div>
                     </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">MRV</div>
-                        <div class="algo-stat-label">Heuristic</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">&lt;1s</div>
-                        <div class="algo-stat-label">Typical Runtime</div>
+
+                    <!-- Multi-Candidate Alternatives Panel -->
+                    <div id="variants-comparison-panel" style="display: none; margin-top: var(--space-lg);">
+                        <h4>Alternative Timetable Candidates</h4>
+                        <p class="form-hint" style="margin-bottom: var(--space-md);">Compare candidate variants across soft scores and diversity percentage before selecting the active institutional schedule.</p>
+                        <div id="variants-grid" class="variants-grid"></div>
                     </div>
                 </div>
-                <div class="algo-constraints">
-                    <span class="constraint-tag">No section conflicts</span>
-                    <span class="constraint-tag">No faculty clashes</span>
-                    <span class="constraint-tag">No room double-booking</span>
-                    <span class="constraint-tag">Room type suitability</span>
-                    <span class="constraint-tag">Room capacity check</span>
-                    <span class="constraint-tag">Lab consecutive slots</span>
+
+                <!-- Trace Diagnostics Control -->
+                <div class="surface-card">
+                    <h3>Solver Execution Trace Debugging</h3>
+                    <div class="form-row" style="margin-top: var(--space-md);">
+                        <div class="form-group">
+                            <label class="form-label" for="trace-level">Trace Logging Verbosity</label>
+                            <select id="trace-level">
+                                <option value="0">Level 0: Off</option>
+                                <option value="1">Level 1: Milestone Events Only</option>
+                                <option value="2">Level 2: Step-by-Step Backtracking</option>
+                                <option value="3">Level 3: Full Arc Consistency Trace</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="trace-filter">Session Filter (Optional)</label>
+                            <input type="text" id="trace-filter" placeholder="e.g. CS301_3A_L0">
+                        </div>
+                    </div>
                 </div>
             </div>
 
-
-            <!-- Pre-Generate Summary Panel (v1) -->
-            <div class="card" id="pre-gen-summary" style="display:none; margin-bottom:16px;">
-                <h3 style="margin-bottom:12px;">Schedule Summary</h3>
-                <div id="summary-grid"
-                    style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+            <!-- TAB 7: Timetable Views & Seam Editor -->
+            <div id="views" class="tab-content">
+                <div class="page-header">
+                    <div>
+                        <h3>Operational Timetable Grid</h3>
+                        <p class="page-desc">Interactive weekly schedule grid. Click any scheduled session to relocate or swap with live constraint validation.</p>
+                    </div>
+                    <div class="actions" style="display: flex; gap: var(--space-xs); flex-wrap: wrap; align-items: center;">
+                        <span id="views-lifecycle-badge" class="lifecycle-chip chip-draft">Draft</span>
+                        <button id="btn-publish-schedule" class="btn btn-success btn-sm">Publish Schedule</button>
+                        <button id="btn-unpublish-schedule" class="btn btn-outline btn-sm">Unpublish</button>
+                        <button id="btn-export-excel" class="btn btn-outline btn-sm">Export Excel</button>
+                        <button id="btn-print" class="btn btn-outline btn-sm">Print</button>
+                    </div>
                 </div>
-                <div id="summary-warnings" style="margin-bottom:12px;"></div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                    <button id="btn-confirm-generate" class="btn-generate" style="flex:1;min-width:200px;">
-                        Confirm &amp; Generate
-                    </button>
-                    <button id="btn-cancel-generate" class="btn secondary" style="flex:0;">Cancel</button>
+
+                <div class="surface-card" style="margin-bottom: var(--space-md); display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); flex-wrap: wrap;">
+                    <div class="view-tabs" role="tablist">
+                        <button class="view-btn active" data-view="master">Master View</button>
+                        <button class="view-btn" data-view="section">By Section</button>
+                        <button class="view-btn" data-view="faculty">By Faculty</button>
+                        <button class="view-btn" data-view="room">By Room</button>
+                    </div>
+
+                    <div style="display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap;">
+                        <select id="view-selector" class="view-dropdown" style="display: none;"></select>
+                        <a id="btn-faculty-ics" class="btn btn-outline btn-sm" style="display: none; text-decoration: none; white-space: nowrap;" target="_blank">
+                            Subscribe Calendar (.ics)
+                        </a>
+                    </div>
                 </div>
+
+                <!-- Timetable Grid Container -->
+                <div id="view-content" class="tt-grid-wrapper"></div>
             </div>
 
-            <div class="generate-controls card">
-                <button id="btn-generate" class="btn-generate">
-                    Generate Timetable
-                </button>
-                <button id="btn-validate" class="btn secondary" style="margin-left: 12px;">
-                    Validate Configuration
-                </button>
-            </div>
+            <!-- TAB 8: Theory & Viva Defense Guide -->
+            <div id="theory" class="tab-content">
+                <div class="surface-card">
+                    <h3>Constraint Satisfaction Problem (CSP) Formulation</h3>
+                    <div class="page-desc" style="max-width: 75ch; margin-top: var(--space-sm); line-height: 1.6;">
+                        <p><strong>Formal Model:</strong> A timetable is defined by a tuple <code>(X, D, C)</code> where:</p>
+                        <ul style="margin-block: var(--space-xs); padding-left: var(--space-lg);">
+                            <li><strong>Variables (X):</strong> Every lecture session and laboratory block across all registered courses.</li>
+                            <li><strong>Domains (D):</strong> Feasible assignments of <code>(Day, Start Slot, Room)</code> satisfying time and capacity boundaries.</li>
+                            <li><strong>Hard Constraints (C_hard):</strong> Absolute inviolable constraints. Solutions violating even one hard constraint are discarded.</li>
+                            <li><strong>Soft Constraints (C_soft):</strong> Quality optimization metrics aggregated into a weighted soft score.</li>
+                        </ul>
 
-            <div id="generate-status" style="margin-top: 20px; display: none;">
-                <div class="status-card" id="gen-status-card">
-                    <h3 id="gen-status-text"></h3>
-                    <div id="gen-score" style="display: none;"></div>
-                    <div id="gen-diagnostics" style="display: none; color: #c62828; margin-top: 10px;"></div>
-                </div>
-            </div>
-
-            <div id="validation-report" style="display: none; margin-top: 20px;">
-                <div class="card">
-                    <h3>Validation Report</h3>
-                    <div id="val-content"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Timetable Views Tab -->
-        <section id="views" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Timetable Views</h2>
-                    <p class="page-desc">Browse the generated schedule by section, faculty, or room.</p>
-                </div>
-                <button id="btn-print" class="btn primary" style="display: none;" onclick="window.print()">
-                    Print Timetable
-                </button>
-            </div>
-
-            <div class="view-tabs">
-                <button class="view-btn active" data-view="master">Master View</button>
-                <button class="view-btn" data-view="section">By Section</button>
-                <button class="view-btn" data-view="faculty">By Faculty</button>
-                <button class="view-btn" data-view="room">By Room</button>
-            </div>
-
-            <div id="view-controls" style="margin: 12px 0; display: flex; gap: 10px; align-items: center;">
-                <select id="view-selector"
-                    style="display: none; padding: 8px 12px; font-size: 15px; border: 1px solid #ddd; border-radius: 6px; min-width: 200px;"></select>
-            </div>
-
-            <div id="view-content">
-                <div class="empty-state">
-                    <p>No timetable generated yet.<br>Go to <strong>Generate</strong> tab to create one.</p>
+                        <h3 style="margin-top: var(--space-md);">The 6 Hard Constraints</h3>
+                        <ol style="margin-block: var(--space-xs); padding-left: var(--space-lg);">
+                            <li><strong>Room Conflict:</strong> At most one academic session per room per time slot.</li>
+                            <li><strong>Faculty Conflict:</strong> No instructor scheduled in two simultaneous classes.</li>
+                            <li><strong>Cohort Conflict:</strong> No student section or overlapping lab batch double-booked.</li>
+                            <li><strong>Faculty Availability:</strong> Sessions scheduled only during designated available days and hours.</li>
+                            <li><strong>Room Suitability:</strong> Laboratories assigned exclusively to lab blocks; seating capacity &ge; cohort strength.</li>
+                            <li><strong>Session Continuity:</strong> Multi-hour lab blocks assigned to contiguous unbroken time slots.</li>
+                        </ol>
+                    </div>
                 </div>
             </div>
+
         </section>
 
     </main>
 
-    <div id="notification" class="notification hidden"></div>
+    <!-- ===================================================================== -->
+    <!-- MODAL DIALOGS                                                         -->
+    <!-- ===================================================================== -->
+
+    <!-- Auth Login Modal -->
+    <div id="modal-auth" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Campus Account Sign In</h3>
+                <button type="button" class="modal-close" id="btn-close-auth">&times;</button>
+            </div>
+            <form id="form-auth-login">
+                <div class="form-group">
+                    <label class="form-label" for="auth-username">Username</label>
+                    <input type="text" id="auth-username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="auth-password">Password</label>
+                    <input type="password" id="auth-password" required autocomplete="current-password">
+                </div>
+                <div id="auth-feedback" class="form-hint" style="color: var(--color-error); margin-bottom: var(--space-sm);"></div>
+                <div style="display: flex; gap: var(--space-xs); justify-content: flex-end;">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-auth">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-auth">Sign In</button>
+                </div>
+                <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--color-rule);">
+                    <span class="form-hint" style="display: block; margin-bottom: var(--space-2xs);">Quick demo credentials:</span>
+                    <div style="display: flex; gap: var(--space-2xs); flex-wrap: wrap;">
+                        <button type="button" class="btn btn-sm btn-outline" onclick="quickFillAuth('admin', 'admin123')">Admin</button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="quickFillAuth('coordinator', 'coord123')">Coordinator</button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="quickFillAuth('faculty', 'faculty123')">Faculty</button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="quickFillAuth('student', 'student123')">Student</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Excel Import Modal -->
+    <div id="modal-import" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Import Institutional Excel Workbook</h3>
+                <button type="button" class="modal-close" id="btn-close-import">&times;</button>
+            </div>
+            <form id="form-import-excel">
+                <p class="page-desc" style="margin-bottom: var(--space-md);">Upload a formatted multi-sheet Excel file (.xlsx) containing Rooms, Faculty, Sections, Batches, and Courses.</p>
+                <div class="form-group">
+                    <label class="form-label" for="excel-file-input">Excel File (.xlsx)</label>
+                    <input type="file" id="excel-file-input" accept=".xlsx,.xlsm" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Import Mode</label>
+                    <label><input type="radio" name="import_mode" value="replace" checked> Replace existing dataset</label>
+                    <label style="margin-left: var(--space-md);"><input type="radio" name="import_mode" value="append"> Append new records</label>
+                </div>
+                <div id="import-feedback" class="form-hint" style="margin-bottom: var(--space-md);"></div>
+                <div style="display: flex; gap: var(--space-xs); justify-content: flex-end;">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-import">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-import">Import Workbook</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Interactive Move Session Modal -->
+    <div id="modal-move-session" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Relocate Scheduled Session</h3>
+                <button type="button" class="modal-close" id="btn-close-move">&times;</button>
+            </div>
+            <form id="form-move-session">
+                <input type="hidden" id="move-session-id">
+                <div style="margin-bottom: var(--space-md);">
+                    <h4 id="move-modal-course-title" style="margin-bottom: var(--space-3xs);">Course</h4>
+                    <span id="move-modal-course-meta" class="form-hint">Details</span>
+                    <div id="move-modal-current-pos" class="form-hint" style="font-weight: 500; color: var(--color-ink);">Current: Monday, Slot 0 (Room 101)</div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="move-target-day">Target Day</label>
+                        <select id="move-target-day" required>
+                            <option value="Monday">Monday</option>
+                            <option value="Tuesday">Tuesday</option>
+                            <option value="Wednesday">Wednesday</option>
+                            <option value="Thursday">Thursday</option>
+                            <option value="Friday">Friday</option>
+                            <option value="Saturday">Saturday</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="move-target-slot">Target Slot</label>
+                        <select id="move-target-slot" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="move-target-room">Target Room</label>
+                        <select id="move-target-room" required></select>
+                    </div>
+                </div>
+
+                <div id="move-feedback" class="form-hint" style="margin-bottom: var(--space-md);"></div>
+
+                <div style="display: flex; gap: var(--space-xs); justify-content: flex-end;">
+                    <button type="button" class="btn btn-outline" id="btn-check-move">Verify Collision</button>
+                    <button type="button" class="btn btn-outline" id="btn-cancel-move">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-apply-move">Apply Move</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Version Snapshots Modal -->
+    <div id="modal-version-history" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Schedule Version Snapshots & Rollback</h3>
+                <button type="button" class="modal-close" id="btn-close-version-history">&times;</button>
+            </div>
+            <div style="margin-bottom: var(--space-md);">
+                <div class="form-row" style="align-items: flex-end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="snapshot-tag-input">Version Tag (Optional)</label>
+                        <input type="text" id="snapshot-tag-input" placeholder="e.g. v1.1-post-faculty-review">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="snapshot-note-input">Change Notes</label>
+                        <input type="text" id="snapshot-note-input" placeholder="e.g. Swapped CS301 lab to Friday morning">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <button type="button" id="btn-save-snapshot" class="btn btn-primary btn-sm" style="height: 38px;">Save Snapshot</button>
+                    </div>
+                </div>
+            </div>
+            <div class="table-container" style="max-height: 350px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Tag</th>
+                            <th>Timestamp</th>
+                            <th>Score</th>
+                            <th>Note</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="version-history-tbody"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: var(--space-md);">
+                <button type="button" class="btn btn-outline" id="btn-dismiss-version-history">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Log Modal -->
+    <div id="modal-change-alerts" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Schedule Modification Audit Trail</h3>
+                <button type="button" class="modal-close" id="btn-close-change-alerts">&times;</button>
+            </div>
+            <div class="table-container" style="max-height: 350px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Event</th>
+                            <th>Session / Details</th>
+                            <th>From &rarr; To</th>
+                        </tr>
+                    </thead>
+                    <tbody id="change-alerts-tbody"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: var(--space-md);">
+                <button type="button" class="btn btn-danger btn-sm" id="btn-clear-change-alerts">Clear Audit Log</button>
+                <button type="button" class="btn btn-outline" id="btn-dismiss-change-alerts">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Utilization Reports Modal -->
+    <div id="modal-reports" class="modal">
+        <div class="modal-content" style="max-width: 860px;">
+            <div class="modal-header">
+                <h3>Institutional Facility & Faculty Utilization</h3>
+                <button type="button" class="modal-close" id="btn-close-reports">&times;</button>
+            </div>
+            <div class="view-tabs" role="tablist" style="margin-bottom: var(--space-md);">
+                <button class="view-btn report-tab-btn active" data-report="rooms">Classrooms</button>
+                <button class="view-btn report-tab-btn" data-report="faculty">Faculty Workload</button>
+                <button class="view-btn report-tab-btn" data-report="sections">Section Density</button>
+            </div>
+            <div id="report-content-panel"></div>
+            <div style="display: flex; justify-content: flex-end; margin-top: var(--space-md);">
+                <button type="button" class="btn btn-outline" id="btn-dismiss-reports">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="notification" class="notification hidden" role="alert"></div>
+
+    <!-- Commercial Site Footer -->
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="footer-brand">
+                <h4>AutoSchedule</h4>
+                <p>Enterprise academic timetable scheduler powered by pure-Python constraint satisfaction problem (CSP) heuristics.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h5>Platform</h5>
+                    <ul>
+                        <li><a href="#landing-section">Overview</a></li>
+                        <li><a href="#workbench-section">Workbench</a></li>
+                        <li><a href="/portal">Student Portal</a></li>
+                        <li><a href="#pricing-section">Pricing</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Architecture</h5>
+                    <ul>
+                        <li><a href="#theory">CSP Formulation</a></li>
+                        <li><a href="/api/export/excel">Excel Export</a></li>
+                        <li><a href="/api/import/template">Workbook Template</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-meta">
+                <span>&copy; 2026 AutoSchedule Academic Systems.</span>
+                <span>Deterministic CSP Solver · 3NF Relational Persistence</span>
+            </div>
+        </div>
+    </footer>
 
     <script src="/static/app.js"></script>
-
     <script>
-        // ── v1: Pre-Generate Summary ──────────────────────────────────────────────
-        (function () {
-            const btnGen = document.getElementById('btn-generate');
-            const btnConf = document.getElementById('btn-confirm-generate');
-            const btnCancel = document.getElementById('btn-cancel-generate');
-            const panel = document.getElementById('pre-gen-summary');
-            const grid = document.getElementById('summary-grid');
-            const warnings = document.getElementById('summary-warnings');
-            const controls = document.querySelector('.generate-controls.card');
+        function quickFillAuth(user, pass) {
+            document.getElementById('auth-username').value = user;
+            document.getElementById('auth-password').value = pass;
+        }
 
-            // Flag: skip summary and go straight to generation (after user confirms)
-            let _skipSummary = false;
-
-            function statCard(label, value, color) {
-                return `<div style="background:#f9f9fb;border:1px solid #e3e6f0;border-radius:10px;padding:14px 16px;text-align:center;">
-                        <div style="font-size:28px;font-weight:700;color:${color || '#3b5bdb'};">${value}</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;">${label}</div>
-                    </div>`;
+        // Smooth navigation and section switcher
+        document.getElementById('btn-hero-launch-workbench')?.addEventListener('click', () => {
+            const wb = document.getElementById('workbench-section');
+            const fac = document.getElementById('faculty-dashboard-section');
+            if (currentUser && currentUser.role === 'FACULTY' && fac) {
+                fac.scrollIntoView({ behavior: 'smooth' });
+            } else if (wb) {
+                wb.scrollIntoView({ behavior: 'smooth' });
+                const configTab = document.querySelector('.tab-btn[data-target="config"]');
+                if (configTab) configTab.click();
             }
-
-            btnGen && btnGen.addEventListener('click', async (e) => {
-                // If confirmed, let the existing app.js listener run normally
-                if (_skipSummary) { _skipSummary = false; return; }
-
-                e.stopImmediatePropagation();
-                try {
-                    const res = await fetch('/api/summary');
-                    const data = await res.json();
-
-                    if (!data.config_set) {
-                        alert('Please save a configuration first (Config tab).');
-                        return;
-                    }
-                    if (data.courses === 0) {
-                        alert('No courses defined. Please add courses before generating.');
-                        return;
-                    }
-
-                    grid.innerHTML = [
-                        statCard('Sections', data.sections, '#1c7ed6'),
-                        statCard('Batches', data.batches, '#1c7ed6'),
-                        statCard('Faculty', data.faculty, '#1c7ed6'),
-                        statCard('Theory Rooms', data.theory_rooms, '#2f9e44'),
-                        statCard('Lab Rooms', data.lab_rooms, '#2f9e44'),
-                        statCard('Courses', data.courses, '#7048e8'),
-                        statCard('Theory Sessions / week', data.theory_sessions_per_week, '#e67700'),
-                        statCard('Lab Sessions / week', data.lab_sessions_per_week, '#e67700'),
-                        statCard('Total Hours / week', data.total_weekly_session_hours, '#c92a2a'),
-                        statCard('Available Slots / week', data.available_slots_per_week, '#495057'),
-                    ].join('');
-
-                    // Warnings
-                    let w = '';
-                    if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9)
-                        w += '<p style="color:#c92a2a;font-weight:600;">[Warning] Session hours are very close to (or exceed) available slots — scheduling may fail.</p>';
-                    if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0)
-                        w += '<p style="color:#e67700;font-weight:600;">[Warning] Lab sessions exist but no Lab rooms are defined.</p>';
-                    warnings.innerHTML = w;
-
-                    panel.style.display = 'block';
-                    controls.style.display = 'none';
-                } catch (err) {
-                    alert('Could not load summary: ' + err.message);
-                }
-            }, true /* capture so it fires before the existing listener */);
-
-            btnCancel && btnCancel.addEventListener('click', () => {
-                panel.style.display = 'none';
-                controls.style.display = '';
-            });
-
-            btnConf && btnConf.addEventListener('click', () => {
-                panel.style.display = 'none';
-                controls.style.display = '';
-                // Set flag so the capture listener passes through, then click
-                _skipSummary = true;
-                document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            });
-        })();
+        });
     </script>
-
 </body>
-
 </html>
