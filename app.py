@@ -10,7 +10,7 @@ Serves the single-page frontend and provides a JSON API for:
 All data is persisted in SQLite database (autoschedule.db).
 """
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_file
 import os
 from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
 from time_slots import generate_time_slots, time_to_minutes
@@ -605,12 +605,73 @@ def validate_current_timetable():
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Excel Import API — REMOVED in v1 (demo data only)
 # ---------------------------------------------------------------------------
-# Deferred to a future version. Use /api/load-demo or manual entry.
-
-
+# Excel Import & Template API
 # ---------------------------------------------------------------------------
+@app.route('/api/import-excel', methods=['POST'])
+def import_excel():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    file = request.files['file']
+    if not file.filename or not file.filename.endswith('.xlsx'):
+        return jsonify({'error': 'Please upload a valid .xlsx file'}), 400
+
+    temp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_upload.xlsx')
+    file.save(temp_path)
+    try:
+        from excel_import import parse_excel
+        res = parse_excel(temp_path)
+        if res.get('status') == 'error':
+            return jsonify({'error': 'Validation failed', 'details': res.get('errors')}), 400
+
+        data = res['data']
+        if request.args.get('preview') == 'true':
+            return jsonify({
+                'status': 'ok',
+                'counts': {
+                    'faculty': len(data['faculty']),
+                    'rooms': len(data['rooms']),
+                    'sections': len(data['sections']),
+                    'batches': len(data['batches']),
+                    'courses': len(data['courses'])
+                }
+            })
+
+        app_data['faculty'] = data['faculty']
+        app_data['rooms'] = data['rooms']
+        app_data['sections'] = data['sections']
+        app_data['batches'] = data['batches']
+        app_data['courses'] = data['courses']
+        app_data['engine'] = None
+        app_data['result'] = None
+        save_data(app_data)
+
+        return jsonify({
+            'status': 'ok',
+            'message': 'Dataset successfully imported and persisted to SQLite',
+            'counts': {
+                'faculty': len(data['faculty']),
+                'rooms': len(data['rooms']),
+                'sections': len(data['sections']),
+                'batches': len(data['batches']),
+                'courses': len(data['courses'])
+            }
+        })
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+@app.route('/api/download-template', methods=['GET'])
+def download_template():
+    from excel_import import generate_template
+    tmpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'timetable_import_template.xlsx')
+    if not os.path.exists(tmpl_path):
+        generate_template(tmpl_path, prefill_user_data=True)
+    return send_file(tmpl_path, as_attachment=True, download_name='timetable_import_template.xlsx')
+
 # Pre-Generate Summary API  (v1 addition)
 # ---------------------------------------------------------------------------
 @app.route('/api/summary', methods=['GET'])

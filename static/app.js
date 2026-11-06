@@ -1144,3 +1144,86 @@ async function saveTraceConfig() {
         showNotification(err.message, 'error');
     }
 }
+
+
+// Excel Import Event Listeners
+document.getElementById('btn-preview-import')?.addEventListener('click', async () => {
+    const fileInput = document.getElementById('excel-file');
+    if (!fileInput || !fileInput.files.length) {
+        showNotification('Please select an Excel file first.', 'error');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const btn = document.getElementById('btn-preview-import');
+        btn.textContent = 'Previewing...';
+        btn.disabled = true;
+
+        const res = await fetch('/api/import-excel?preview=true', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        btn.textContent = 'Preview Data';
+        btn.disabled = false;
+
+        const previewDiv = document.getElementById('import-preview');
+        const countsDiv = document.getElementById('preview-counts');
+        const errorsDiv = document.getElementById('preview-errors');
+        previewDiv.style.display = 'block';
+
+        if (!res.ok) {
+            countsDiv.innerHTML = '';
+            let errorMsg = data.error || 'Validation failed';
+            if (data.details) errorMsg += '<br>' + data.details.join('<br>');
+            errorsDiv.innerHTML = errorMsg;
+            document.getElementById('btn-import-excel').style.display = 'none';
+        } else {
+            errorsDiv.innerHTML = '';
+            countsDiv.innerHTML = `
+                <ul style="margin-left: 20px; line-height: 1.8;">
+                    <li><strong>Faculty:</strong> ${data.counts.faculty} members</li>
+                    <li><strong>Rooms:</strong> ${data.counts.rooms} rooms</li>
+                    <li><strong>Sections:</strong> ${data.counts.sections} sections</li>
+                    <li><strong>Batches:</strong> ${data.counts.batches} batches</li>
+                    <li><strong>Courses:</strong> ${data.counts.courses} courses</li>
+                </ul>
+                <p style="color: #10b981; font-weight: 600; margin-top: 12px;">Validation passed. Ready to persist into SQLite.</p>
+            `;
+            document.getElementById('btn-import-excel').style.display = 'inline-block';
+        }
+    } catch (e) {
+        showNotification('Failed to preview Excel file.', 'error');
+    }
+});
+
+document.getElementById('btn-import-excel')?.addEventListener('click', async () => {
+    const fileInput = document.getElementById('excel-file');
+    if (!fileInput || !fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    try {
+        const btn = document.getElementById('btn-import-excel');
+        btn.textContent = 'Importing to SQLite...';
+        btn.disabled = true;
+
+        const res = await fetch('/api/import-excel', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+            showNotification(data.error || 'Import failed', 'error');
+        } else {
+            showNotification('Dataset imported and saved to SQLite successfully!');
+            document.getElementById('import-preview').style.display = 'none';
+            btn.style.display = 'none';
+            if (typeof loadRooms === 'function') await loadRooms();
+            if (typeof loadFaculty === 'function') await loadFaculty();
+            if (typeof loadSections === 'function') await loadSections();
+            if (typeof loadCourses === 'function') await loadCourses();
+        }
+        btn.textContent = 'Import to SQLite';
+        btn.disabled = false;
+    } catch (e) {
+        showNotification('Import failed.', 'error');
+    }
+});

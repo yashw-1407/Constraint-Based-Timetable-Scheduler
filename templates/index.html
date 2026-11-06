@@ -34,6 +34,7 @@
         <button class="tab-btn" data-target="faculty">Faculty</button>
         <button class="tab-btn" data-target="sections">Sections</button>
         <button class="tab-btn" data-target="courses">Courses</button>
+        <button class="tab-btn" data-target="import">Import Excel</button>
         <button class="tab-btn" data-target="generate">Generate</button>
         <button class="tab-btn" data-target="views">Timetable Views</button>
     </nav>
@@ -317,6 +318,41 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+        </section>
+
+        <!-- Import Data Tab -->
+        <section id="import" class="tab-content">
+            <div class="page-header">
+                <div>
+                    <h2>Import Academic Dataset</h2>
+                    <p class="page-desc">Upload an Excel workbook (.xlsx) to populate Faculty, Rooms, Sections, Batches, and Courses into SQLite.</p>
+                </div>
+                <div class="actions">
+                    <a href="/api/download-template" class="btn" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+                        Download Excel Template
+                    </a>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 24px;">
+                <h3 class="form-title">Upload Excel Workbook</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                    Ensure your workbook contains sheets: <strong>Faculty</strong>, <strong>Rooms</strong>, <strong>Sections</strong>, <strong>Batches</strong>, and <strong>Courses</strong>.
+                </p>
+                <div style="margin-bottom: 20px;">
+                    <input type="file" id="excel-file" accept=".xlsx" style="padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-size: 14px;">
+                </div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button id="btn-preview-import" class="btn">Preview Data</button>
+                    <button id="btn-import-excel" class="btn primary" style="display: none;">Import to SQLite</button>
+                </div>
+
+                <div id="import-preview" style="display: none; margin-top: 24px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h4 style="margin-bottom: 12px; font-size: 15px;">Preview Summary</h4>
+                    <div id="preview-counts" style="margin-bottom: 12px;"></div>
+                    <div id="preview-errors" style="color: #ef4444; font-weight: 500; font-size: 13px;"></div>
+                </div>
             </div>
         </section>
 

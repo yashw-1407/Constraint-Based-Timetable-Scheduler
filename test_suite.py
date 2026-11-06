@@ -332,5 +332,47 @@ class TestTimetableScheduler(unittest.TestCase):
         conn.close()
 
 
+
+    def test_13_excel_import_and_template(self):
+        """Verify Excel import parsing, preview, SQLite persistence, and template download."""
+        from io import BytesIO
+
+        # Test download template
+        tmpl_res = self.client.get('/api/download-template')
+        self.assertEqual(tmpl_res.status_code, 200)
+        self.assertIn(b'PK', tmpl_res.data[:4])  # Zip/XLSX magic number
+
+        # Test preview with uploaded file
+        data = {
+            'file': (BytesIO(tmpl_res.data), 'timetable.xlsx')
+        }
+        prev_res = self.client.post('/api/import-excel?preview=true', data=data, content_type='multipart/form-data')
+        self.assertEqual(prev_res.status_code, 200)
+        prev_json = prev_res.get_json()
+        self.assertEqual(prev_json['status'], 'ok')
+        self.assertEqual(prev_json['counts']['faculty'], 20)
+        self.assertEqual(prev_json['counts']['rooms'], 8)
+        self.assertEqual(prev_json['counts']['sections'], 4)
+        self.assertEqual(prev_json['counts']['batches'], 8)
+        self.assertEqual(prev_json['counts']['courses'], 30)
+
+        # Test actual import into SQLite
+        data2 = {
+            'file': (BytesIO(tmpl_res.data), 'timetable.xlsx')
+        }
+        imp_res = self.client.post('/api/import-excel', data=data2, content_type='multipart/form-data')
+        self.assertEqual(imp_res.status_code, 200)
+
+        # Verify SQLite has exactly 20 faculty, 8 rooms, 4 sections, 8 batches, 30 courses
+        conn = database.get_connection()
+        cur = conn.cursor()
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM faculty').fetchone()[0], 20)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM rooms').fetchone()[0], 8)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM sections').fetchone()[0], 4)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM batches').fetchone()[0], 8)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM courses').fetchone()[0], 30)
+        conn.close()
+
+
 if __name__ == '__main__':
     unittest.main()
