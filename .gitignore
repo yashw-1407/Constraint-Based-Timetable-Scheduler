@@ -10,8 +10,10 @@ env/
 venv/
 ENV/
 
-# Runtime data (re-generated on startup)
-database.json
+# Runtime SQLite temporary/journal files
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Scheduler trace output
 scheduler_trace.json

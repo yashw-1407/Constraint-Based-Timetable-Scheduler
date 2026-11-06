@@ -7,7 +7,7 @@ Serves the single-page frontend and provides a JSON API for:
   - Retrieving timetable views (master, section, faculty, room)
   - Post-generation validation and demo data loading
 
-All data is stored in-memory (no database required for the MVP).
+All data is persisted in SQLite database (autoschedule.db).
 """
 
 from flask import Flask, jsonify, request, render_template
@@ -409,6 +409,7 @@ def generate_timetable():
                                        e['time_start'], e['section_name']))
             result['master_timetable'] = master
 
+        save_data(app_data)
         return jsonify(result)
     except Exception as e:
         import traceback

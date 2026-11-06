@@ -2,13 +2,17 @@
 test_suite.py - Comprehensive verification of all requirements for Constraint-Based Timetable Scheduler.
 """
 
+import os
+import sqlite3
 import unittest
 import json
+import database
 from app import app, app_data
 from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, CourseType
 from time_slots import generate_time_slots
 from scheduler import SchedulingEngine
 from constraints import validate_timetable
+
 
 class TestTimetableScheduler(unittest.TestCase):
     def setUp(self):
@@ -291,6 +295,42 @@ class TestTimetableScheduler(unittest.TestCase):
         self.assertTrue(check_consecutive_slots([0, 1], slots))
         self.assertFalse(check_consecutive_slots([0, 2], slots))
         self.assertFalse(check_consecutive_slots([2, 3], slots))  # 60m lunch gap > 20m
+
+    def test_12_sqlite_persistence(self):
+        """Verify pure SQLite persistence with normalized tables and zero JSON storage."""
+        # Verify database.json does not exist
+        json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.json')
+        self.assertFalse(os.path.exists(json_path), 'database.json should not exist')
+
+        # Load demo data and generate schedule
+        self.client.post('/api/load-demo', json={'scenario': 'standard'})
+        gen_res = self.client.post('/api/generate')
+        self.assertEqual(gen_res.status_code, 200)
+
+        # Connect directly to SQLite and inspect schema & counts
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;")
+        tables = [r[0] for r in cur.fetchall()]
+
+        expected_tables = [
+            'batches', 'config', 'config_breaks', 'config_working_days',
+            'course_faculty', 'course_lab_batches', 'courses', 'faculty',
+            'rooms', 'sections', 'timetable_assignments', 'timetable_metadata'
+        ]
+        for t in expected_tables:
+            self.assertIn(t, tables, f'Table {t} missing in SQLite')
+
+        # Check row counts in tables
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM config').fetchone()[0], 1)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM rooms').fetchone()[0], 6)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM faculty').fetchone()[0], 8)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM sections').fetchone()[0], 4)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM batches').fetchone()[0], 8)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM courses').fetchone()[0], 16)
+        self.assertEqual(cur.execute('SELECT COUNT(*) FROM timetable_assignments').fetchone()[0], 60)
+        conn.close()
+
 
 if __name__ == '__main__':
     unittest.main()
