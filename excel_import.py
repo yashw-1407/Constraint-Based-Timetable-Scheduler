@@ -1,41 +1,75 @@
 """
 excel_import.py - Excel workbook parser and template generator.
 
-Supports importing Faculty, Rooms, Sections, Batches, and Courses
-from an .xlsx file with normalized sheet structures and robust header aliasing.
+Handles:
+- Robust parsing of sheets: Faculty, Rooms, Sections, Batches, Courses.
+- Normalizes column names (handles casing, spaces, underscores, aliases).
+- Extracts all fields: home rooms, assistant faculty, required rooms, etc.
+- Exports starter template timetable_import_template.xlsx.
 """
 
 import os
 from typing import Dict, Any, List
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, PatternFill, Alignment
 from models import Faculty, Room, Section, Batch, Course, RoomType
 
 
-HEADER_ALIASES = {
-    'asst faculty': 'assistant_faculty_ids',
-    'asst_faculty': 'assistant_faculty_ids',
-    'assistant faculty': 'assistant_faculty_ids',
-    'assistant_faculty': 'assistant_faculty_ids',
-    'asst faculty ids': 'assistant_faculty_ids',
-    'asst_faculty_ids': 'assistant_faculty_ids',
-    'required_room': 'required_room_id',
-    'required_room_id': 'required_room_id',
-    'required room': 'required_room_id',
-    'room_type': 'room_type',
-    'type': 'room_type',
-    'l': 'l',
-    't': 't',
-    'p': 'p',
-    'batch_name': 'name',
-}
+def normalize_key(k: str, sheet: str) -> str:
+    """Normalize Excel column headers across variations."""
+    k = str(k).strip().lower()
+    sheet = sheet.lower()
 
+    if sheet == 'courses':
+        if k in ('faculty_id', 'faculty', 'faculty_ids', 'faculty id', 'fac_id'):
+            return 'faculty_ids'
+        if k in ('asst faculty', 'asst_faculty', 'assistant faculty', 'assistant_faculty',
+                 'assistant_faculty_ids', 'asst faculty ids', 'asst_faculty_ids', 'asst'):
+            return 'assistant_faculty_ids'
+        if k in ('required_room', 'required room', 'required_room_id', 'req_room', 'req room', 'req_room_id'):
+            return 'required_room_id'
+        if k in ('batches', 'lab batches', 'lab_batches', 'lab batch', 'lab_batch', 'batch_ids'):
+            return 'lab_batches'
+        if k in ('course_id', 'id'):
+            return 'id'
+        if k in ('course_name', 'name'):
+            return 'name'
+        if k in ('course_code', 'code'):
+            return 'code'
+        if k in ('type', 'room type', 'room_type'):
+            return 'room_type'
 
-def normalize_header(h: str, sheet_name: str) -> str:
-    h_clean = str(h).strip().lower()
-    if sheet_name.lower() == 'courses' and h_clean in ('faculty_id', 'faculty'):
-        return 'faculty_ids'
-    return HEADER_ALIASES.get(h_clean, str(h).strip())
+    elif sheet == 'batches':
+        if k in ('batch_id', 'id'):
+            return 'id'
+        if k in ('batch_name', 'name'):
+            return 'name'
+        if k in ('home_room', 'home room', 'home_room_id', 'homeroom', 'homeroom_id'):
+            return 'home_room_id'
+
+    elif sheet == 'sections':
+        if k in ('section_id', 'id'):
+            return 'id'
+        if k in ('section_name', 'name'):
+            return 'name'
+        if k in ('home_room', 'home room', 'home_room_id', 'homeroom', 'homeroom_id'):
+            return 'home_room_id'
+
+    elif sheet == 'rooms':
+        if k in ('room_id', 'id'):
+            return 'id'
+        if k in ('room_name', 'name'):
+            return 'name'
+        if k in ('type', 'room type', 'room_type'):
+            return 'room_type'
+
+    elif sheet == 'faculty':
+        if k in ('faculty_id', 'id', 'fac_id', 'fid'):
+            return 'id'
+        if k in ('faculty_name', 'name'):
+            return 'name'
+
+    return k
 
 
 def parse_excel(filepath: str) -> Dict[str, Any]:
@@ -48,257 +82,219 @@ def parse_excel(filepath: str) -> Dict[str, Any]:
         'rooms': [],
         'sections': [],
         'batches': [],
-        'courses': [],
+        'courses': []
     }
-    errors = []
+    errors: List[str] = []
 
-    def get_sheet_rows(expected_name: str) -> List[Dict[str, Any]]:
-        actual_name = sheet_names_lower.get(expected_name.lower())
+    def get_rows(sheet_key: str):
+        actual_name = sheet_names_lower.get(sheet_key.lower())
         if not actual_name:
+            return None
+        sheet = wb[actual_name]
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
             return []
-        ws = wb[actual_name]
-        raw_headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
-        headers = [normalize_header(h, expected_name) for h in raw_headers]
-        rows = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not any(row):
+        headers = [normalize_key(cell, sheet_key) if cell is not None else '' for cell in rows[0]]
+        dict_rows = []
+        for r in rows[1:]:
+            if all(v is None or str(v).strip() == '' for v in r):
                 continue
             row_dict = {}
-            for h, val in zip(headers, row):
+            for h, v in zip(headers, r):
                 if h:
-                    row_dict[h] = val
-            rows.append(row_dict)
-        return rows
+                    row_dict[h] = str(v).strip() if v is not None else ''
+            dict_rows.append(row_dict)
+        return dict_rows
 
     # 1. Faculty
-    for r in get_sheet_rows("Faculty"):
-        try:
-            fid = str(r.get('faculty_id') or r.get('id') or '').strip()
-            name = str(r.get('name') or '').strip()
-            if fid and name:
+    f_rows = get_rows('faculty')
+    if f_rows is None:
+        errors.append("Missing required worksheet: 'Faculty'")
+    else:
+        for idx, r in enumerate(f_rows, start=2):
+            fid = r.get('id')
+            name = r.get('name')
+            if not fid or not name:
+                errors.append(f"Faculty sheet row {idx}: 'id' and 'name' are required.")
+            else:
                 data['faculty'].append(Faculty(id=fid, name=name))
-        except Exception as e:
-            errors.append(f"Faculty error in row {r}: {e}")
 
     # 2. Rooms
-    for r in get_sheet_rows("Rooms"):
-        try:
-            rid = str(r.get('room_id') or r.get('id') or '').strip()
-            name = str(r.get('name') or '').strip()
-            rtype = str(r.get('room_type') or RoomType.THEORY_ROOM).strip().upper()
-            if rtype not in ('LAB', 'THEORY_ROOM'):
-                rtype = 'LAB' if 'LAB' in rtype else 'THEORY_ROOM'
-            cap = int(r.get('capacity')) if r.get('capacity') not in (None, '') else None
-            cat = str(r.get('category')).strip() if r.get('category') else None
-            if rid and name:
+    r_rows = get_rows('rooms')
+    if r_rows is None:
+        errors.append("Missing required worksheet: 'Rooms'")
+    else:
+        for idx, r in enumerate(r_rows, start=2):
+            rid = r.get('id')
+            name = r.get('name')
+            raw_type = (r.get('room_type') or 'THEORY_ROOM').upper()
+            rtype = RoomType.LAB if 'LAB' in raw_type else RoomType.THEORY_ROOM
+            cap_val = r.get('capacity', '')
+            try:
+                cap = int(float(cap_val)) if cap_val else None
+            except ValueError:
+                cap = None
+            cat = r.get('category') or None
+            if not rid or not name:
+                errors.append(f"Rooms sheet row {idx}: 'id' and 'name' are required.")
+            else:
                 data['rooms'].append(Room(id=rid, name=name, room_type=rtype, capacity=cap, category=cat))
-        except Exception as e:
-            errors.append(f"Rooms error in row {r}: {e}")
 
     # 3. Sections
-    for r in get_sheet_rows("Sections"):
-        try:
-            sid = str(r.get('section_id') or r.get('id') or '').strip()
-            name = str(r.get('name') or sid).strip()
-            sem = int(r.get('semester') or 1)
-            div = str(r.get('division') or '').strip()
-            strength = int(r.get('strength')) if r.get('strength') not in (None, '') else None
-            hr = str(r.get('home_room_id')).strip() if r.get('home_room_id') not in (None, '', 'None') else None
-            if sid:
-                data['sections'].append(Section(id=sid, name=name, semester=sem, division=div, strength=strength, home_room_id=hr))
-        except Exception as e:
-            errors.append(f"Sections error in row {r}: {e}")
+    s_rows = get_rows('sections')
+    if s_rows is None:
+        errors.append("Missing required worksheet: 'Sections'")
+    else:
+        for idx, r in enumerate(s_rows, start=2):
+            sid = r.get('id')
+            name = r.get('name')
+            try:
+                sem = int(float(r.get('semester', 1)))
+            except ValueError:
+                sem = 1
+            div = r.get('division') or 'A'
+            try:
+                strn = int(float(r.get('strength', ''))) if r.get('strength') else None
+            except ValueError:
+                strn = None
+            hr = r.get('home_room_id') or None
+            if not sid or not name:
+                errors.append(f"Sections sheet row {idx}: 'id' and 'name' are required.")
+            else:
+                data['sections'].append(Section(id=sid, name=name, semester=sem, division=div, strength=strn, home_room_id=hr))
 
     # 4. Batches
-    for r in get_sheet_rows("Batches"):
-        try:
-            bid = str(r.get('batch_id') or r.get('id') or '').strip()
-            name = str(r.get('name') or r.get('batch_name') or bid).strip()
-            sid = str(r.get('section_id') or '').strip()
-            strength = int(r.get('strength')) if r.get('strength') not in (None, '') else None
-            if bid and sid:
-                data['batches'].append(Batch(id=bid, name=name, section_id=sid, strength=strength))
-        except Exception as e:
-            errors.append(f"Batches error in row {r}: {e}")
+    b_rows = get_rows('batches')
+    if b_rows is not None:
+        for idx, r in enumerate(b_rows, start=2):
+            bid = r.get('id')
+            name = r.get('name')
+            sid = r.get('section_id')
+            try:
+                strn = int(float(r.get('strength', ''))) if r.get('strength') else None
+            except ValueError:
+                strn = None
+            hr = r.get('home_room_id') or None
+            if not bid or not name or not sid:
+                errors.append(f"Batches sheet row {idx}: 'id', 'name', and 'section_id' are required.")
+            else:
+                data['batches'].append(Batch(id=bid, name=name, section_id=sid, strength=strn, home_room_id=hr))
 
     # 5. Courses
-    for r in get_sheet_rows("Courses"):
-        try:
-            cid = str(r.get('course_id') or r.get('id') or '').strip()
-            name = str(r.get('name') or '').strip()
-            code = str(r.get('code') or cid).strip()
-            sid = str(r.get('section_id') or '').strip()
+    c_rows = get_rows('courses')
+    if c_rows is None:
+        errors.append("Missing required worksheet: 'Courses'")
+    else:
+        for idx, r in enumerate(c_rows, start=2):
+            cid = r.get('id')
+            name = r.get('name')
+            code = r.get('code')
+            sid = r.get('section_id')
+            try:
+                l = float(r.get('l', 0) or 0)
+                t = float(r.get('t', 0) or 0)
+                p = float(r.get('p', 0) or 0)
+            except ValueError:
+                l, t, p = 0.0, 0.0, 0.0
 
-            fac_str = str(r.get('faculty_ids') or '')
-            fac_ids = [f.strip().strip('"').strip("'") for f in fac_str.split(',') if f.strip().strip('"').strip("'")]
+            fac_str = r.get('faculty_ids') or ''
+            fac_ids = [f.strip() for f in fac_str.replace(';', ',').split(',') if f.strip()]
 
-            asst_str = str(r.get('assistant_faculty_ids') or '')
-            asst_ids = [f.strip().strip('"').strip("'") for f in asst_str.split(',') if f.strip().strip('"').strip("'")]
+            asst_str = r.get('assistant_faculty_ids') or ''
+            asst_ids = [f.strip() for f in asst_str.replace(';', ',').split(',') if f.strip()]
 
-            b_str = str(r.get('lab_batches') or '')
-            batches = [b.strip().strip('"').strip("'") for b in b_str.split(',') if b.strip().strip('"').strip("'")]
+            raw_type = (r.get('room_type') or 'THEORY_ROOM').upper()
+            rtype = RoomType.LAB if 'LAB' in raw_type else RoomType.THEORY_ROOM
+            req_room = r.get('required_room_id') or None
 
-            rtype = str(r.get('room_type') or RoomType.THEORY_ROOM).strip().upper()
-            if rtype not in ('LAB', 'THEORY_ROOM'):
-                rtype = 'LAB' if 'LAB' in rtype else 'THEORY_ROOM'
+            batch_str = r.get('lab_batches') or ''
+            lab_batches = [b.strip() for b in batch_str.replace(';', ',').split(',') if b.strip()]
 
-            req_room = str(r.get('required_room_id')).strip() if r.get('required_room_id') not in (None, '', 'None') else None
-
-            l_val = float(r.get('l') or r.get('L') or 0)
-            t_val = float(r.get('t') or r.get('T') or 0)
-            p_val = float(r.get('p') or r.get('P') or 0)
-
-            if cid and sid:
+            if not cid or not name or not code or not sid:
+                errors.append(f"Courses sheet row {idx}: 'id', 'name', 'code', and 'section_id' are required.")
+            else:
                 data['courses'].append(Course(
-                    id=cid,
-                    name=name,
-                    code=code,
-                    section_id=sid,
-                    l=l_val,
-                    t=t_val,
-                    p=p_val,
-                    faculty_ids=fac_ids,
+                    id=cid, name=name, code=code, section_id=sid,
+                    l=l, t=t, p=p, faculty_ids=fac_ids,
                     assistant_faculty_ids=asst_ids,
-                    room_type=rtype,
-                    required_room_id=req_room,
-                    lab_batches=batches
+                    room_type=rtype, required_room_id=req_room,
+                    lab_batches=lab_batches
                 ))
-        except Exception as e:
-            errors.append(f"Courses error in row {r}: {e}")
 
     if errors:
         return {'status': 'error', 'errors': errors}
+
     return {'status': 'ok', 'data': data}
 
 
-def generate_template(filepath: str, prefill_user_data: bool = True) -> str:
-    """Generate a clean Excel workbook matching the exact academic structure."""
+def generate_template(filepath: str, prefill_user_data: bool = True) -> None:
+    """Generate Excel starter workbook."""
     wb = openpyxl.Workbook()
+    wb.remove(wb.active)
 
-    # 1. Faculty
-    ws_fac = wb.active
-    ws_fac.title = "Faculty"
-    ws_fac.append(["faculty_id", "name"])
+    header_font = Font(name='Calibri', size=11, bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='1E3A8A', end_color='1E3A8A', fill_type='solid')
 
-    # 2. Rooms
-    ws_rooms = wb.create_sheet("Rooms")
-    ws_rooms.append(["room_id", "name", "type", "capacity", "category"])
-
-    # 3. Sections
-    ws_sec = wb.create_sheet("Sections")
-    ws_sec.append(["section_id", "name", "semester", "division", "strength", "home_room_id"])
-
-    # 4. Batches
-    ws_bat = wb.create_sheet("Batches")
-    ws_bat.append(["batch_id", "batch_name", "section_id", "strength"])
-
-    # 5. Courses
-    ws_crs = wb.create_sheet("Courses")
-    ws_crs.append(["course_id", "name", "code", "section_id", "L", "T", "P", "faculty_ids", "Asst faculty", "room_type", "required_room", "lab_batches"])
-
-    if prefill_user_data:
-        faculty_rows = [
-            ("F001", "Nagaratna K"), ("F002", "Veena H"), ("F003", "Jyoti Patil"),
-            ("F004", "Maheshgouda Patil"), ("F005", "Arundati A"), ("F006", "Megha Javoor"),
-            ("F007", "Amit K"), ("F008", "Soumya Patil"), ("F009", "Mallikarjun Akki"),
-            ("F010", "Pavan G"), ("F011", "Pavan"), ("F012", "Aishwarya N"),
-            ("F013", "Sadaf S"), ("F014", "Shrushti N"), ("F015", "Sneha V"),
-            ("F016", "Dheeraj K"), ("F017", "Shrishti G"), ("F018", "Pooja S"),
-            ("F019", "Umadevi"), ("F020", "Narayan D G")
-        ]
-        for row in faculty_rows:
-            ws_fac.append(list(row))
-
-        room_rows = [
-            ("R001", "LHC201", "LAB", 35, ""),
-            ("R002", "LAB6", "LAB", 35, ""),
-            ("R003", "LHC306", "THEORY_ROOM", 70, ""),
-            ("R004", "LHC307", "THEORY_ROOM", 70, ""),
-            ("R005", "LHC301", "THEORY_ROOM", 70, ""),
-            ("R006", "LHC202", "THEORY_ROOM", 70, ""),
-            ("R007", "CLH310", "LAB", 70, ""),
-            ("R008", "CLH309", "LAB", 35, ""),
-        ]
-        for row in room_rows:
-            ws_rooms.append(list(row))
-
-        section_rows = [
-            ("S3A", "3A", 3, "A", 70, "R005"),
-            ("S3B", "3B", 3, "B", 68, "R006"),
-            ("S5A", "5A", 5, "A", 70, "R003"),
-            ("S5B", "5B", 5, "B", 65, "R004"),
-        ]
-        for row in section_rows:
-            ws_sec.append(list(row))
-
-        batch_rows = [
-            ("B3A1", "A1", "S3A", 35),
-            ("B3A2", "A2", "S3A", 35),
-            ("B3B1", "B1", "S3B", 35),
-            ("B3B2", "B2", "S3B", 33),
-            ("B5A1", "A1", "S5A", 35),
-            ("B5A2", "A2", "S5A", 35),
-            ("B5B1", "B1", "S5B", 35),
-            ("B5B2", "B2", "S5B", 30),
-        ]
-        for row in batch_rows:
-            ws_bat.append(list(row))
-
-        course_rows = [
-            ("C3A01", "Discrete Mathematical Structures", "26EMAB229", "S3A", 3, 0, 2, "F001", "", "THEORY_ROOM", "", "B3A1,B3A2"),
-            ("C3A02", "Database Management System", "26ECAC201", "S3A", 3, 0, 0, "F003", "", "THEORY_ROOM", "", ""),
-            ("C3A03", "Design and Analysis of Algorithms", "26ECAC202", "S3A", 3, 0, 0, "F004", "", "THEORY_ROOM", "", ""),
-            ("C3A04", "Operating System Principles and Programming", "26ECAC203", "S3A", 3, 0, 2, "F005", "", "THEORY_ROOM", "", "B3A1,B3A2"),
-            ("C3A05", "Software Engineering", "26ECAC204", "S3A", 3, 0, 0, "F007", "", "THEORY_ROOM", "", ""),
-            ("C3A06", "Algorithms Lab", "26ECAP201", "S3A", 0, 0, 3, "F004", "F010", "LAB", "", "B3A1,B3A2"),
-            ("C3A07", "Database Applications Lab", "26ECAP202", "S3A", 0, 0, 3, "F003", "F012", "LAB", "", "B3A1,B3A2"),
-            ("C3A08", "Web Technologies Lab", "26ECAP203", "S3A", 0, 0, 3, "F013", "F012", "LAB", "R008", "B3A1,B3A2"),
-            ("C3B01", "Discrete Mathematical Structures", "26EMAB229", "S3B", 3, 0, 2, "F001", "", "THEORY_ROOM", "", "B3B1,B3B2"),
-            ("C3B02", "Database Management System", "26ECAC201", "S3B", 3, 0, 0, "F003", "", "THEORY_ROOM", "", ""),
-            ("C3B03", "Design and Analysis of Algorithms", "26ECAC202", "S3B", 3, 0, 0, "F010", "", "THEORY_ROOM", "", ""),
-            ("C3B04", "Operating System Principles and Programming", "26ECAC203", "S3B", 3, 0, 2, "F005", "", "THEORY_ROOM", "", "B3B1,B3B2"),
-            ("C3B05", "Software Engineering", "26ECAC204", "S3B", 3, 0, 0, "F007", "", "THEORY_ROOM", "", ""),
-            ("C3B06", "Algorithms Lab", "26ECAP201", "S3B", 0, 0, 3, "F010", "F004", "LAB", "", "B3B1,B3B2"),
-            ("C3B07", "Database Applications Lab", "26ECAP202", "S3B", 0, 0, 3, "F003", "F012", "LAB", "", "B3B1,B3B2"),
-            ("C3B08", "Web Technologies Lab", "26ECAP203", "S3B", 0, 0, 3, "F009", "F012", "LAB", "R008", "B3B1,B3B2"),
-            ("C5A01", "Deep Learning", "26ECAC302", "S5A", 4, 0, 0, "F015", "", "THEORY_ROOM", "", ""),
-            ("C5A02", "Cloud Computing", "26ECAC301", "S5A", 3, 0, 2, "F016", "", "THEORY_ROOM", "", "B5A1,B5A2"),
-            ("C5A03", "Parallel and GPU Computing", "26ECAC304", "S5A", 3, 0, 2, "F017", "", "THEORY_ROOM", "", "B5A1,B5A2"),
-            ("C5A04", "Cryptography and Network Security", "26ECAC305", "S5A", 3, 0, 2, "F018", "", "THEORY_ROOM", "", "B5A1,B5A2"),
-            ("C5A05", "Deep Learning Lab", "26ECAP301", "S5A", 0, 0, 3, "F015", "F002", "LAB", "", "B5A1,B5A2"),
-            ("C5A06", "Mini Project", "22ECAW301", "S5A", 0, 0, 3, "F018", "F015, F019, F001", "LAB", "R007", ""),
-            ("C5A08", "AI-Assisted Software Development", "26ECSE346", "S5A", 1, 0, 3, "F020", "F007, F008", "LAB", "R007", ""),
-            ("C5B01", "Deep Learning", "26ECAC302", "S5B", 4, 0, 0, "F019", "", "THEORY_ROOM", "", ""),
-            ("C5B02", "Cloud Computing", "26ECAC301", "S5B", 3, 0, 2, "F016", "", "THEORY_ROOM", "", "B5B1,B5B2"),
-            ("C5B03", "Parallel and GPU Computing", "26ECAC304", "S5B", 3, 0, 2, "F017", "", "THEORY_ROOM", "", "B5B1,B5B2"),
-            ("C5B04", "Cryptography and Network Security", "26ECAC305", "S5B", 3, 0, 2, "F018", "", "THEORY_ROOM", "", "B5B1,B5B2"),
-            ("C5B05", "Deep Learning Lab", "26ECAP301", "S5B", 0, 0, 3, "F019", "F002", "LAB", "", "B5B1,B5B2"),
-            ("C5B06", "Mini Project", "22ECAW301", "S5B", 0, 0, 3, "F019", "F015, F018, F001", "LAB", "R007", ""),
-            ("C5B08", "AI-Assisted Software Development", "26ECSE346", "S5B", 1, 0, 3, "F008", "F007, F009", "LAB", "R007", ""),
-        ]
-        for row in course_rows:
-            ws_crs.append(list(row))
-
-    # Styling headers
-    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=11)
-    align_center = Alignment(horizontal="center", vertical="center")
-
-    for sheet in wb.sheetnames:
-        ws = wb[sheet]
-        for cell in ws[1]:
-            cell.fill = header_fill
+    def style_sheet(ws, headers, rows):
+        ws.append(headers)
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
             cell.font = header_font
-            cell.alignment = align_center
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for row in rows:
+            ws.append(row)
+
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = openpyxl.utils.get_column_letter(col[0].column)
             ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
+    # Faculty
+    ws_fac = wb.create_sheet('Faculty')
+    fac_data = [
+        ['F1', 'Dr. Sharma'],
+        ['F2', 'Prof. Patel'],
+        ['F3', 'Dr. Gupta'],
+        ['F4', 'Prof. Singh'],
+    ] if prefill_user_data else []
+    style_sheet(ws_fac, ['faculty_id', 'name'], fac_data)
+
+    # Rooms
+    ws_rooms = wb.create_sheet('Rooms')
+    room_data = [
+        ['R101', 'Room 101', 'THEORY_ROOM', 70, 'Classroom'],
+        ['R102', 'Room 102', 'THEORY_ROOM', 70, 'Classroom'],
+        ['LAB1', 'CS Lab 1', 'LAB', 35, 'CS'],
+    ] if prefill_user_data else []
+    style_sheet(ws_rooms, ['room_id', 'name', 'type', 'capacity', 'category'], room_data)
+
+    # Sections
+    ws_sec = wb.create_sheet('Sections')
+    sec_data = [
+        ['3A', '3A', 3, 'A', 60, 'R101'],
+        ['3B', '3B', 3, 'B', 60, 'R102'],
+    ] if prefill_user_data else []
+    style_sheet(ws_sec, ['section_id', 'name', 'semester', 'division', 'strength', 'home_room_id'], sec_data)
+
+    # Batches
+    ws_batch = wb.create_sheet('Batches')
+    batch_data = [
+        ['A1', 'A1', '3A', 30],
+        ['A2', 'A2', '3A', 30],
+        ['B1', 'B1', '3B', 30],
+        ['B2', 'B2', '3B', 30],
+    ] if prefill_user_data else []
+    style_sheet(ws_batch, ['batch_id', 'batch_name', 'section_id', 'strength'], batch_data)
+
+    # Courses
+    ws_courses = wb.create_sheet('Courses')
+    course_data = [
+        ['CS301_3A', 'Data Structures', 'CS301', '3A', 3, 0, 0, 'F1', '', 'THEORY_ROOM', '', ''],
+        ['CS302_3A', 'DBMS', 'CS302', '3A', 3, 0, 0, 'F2', '', 'THEORY_ROOM', '', ''],
+        ['CS305_3A', 'DS Lab', 'CS305', '3A', 0, 0, 2, 'F1', 'F3', 'LAB', '', 'A1, A2'],
+    ] if prefill_user_data else []
+    style_sheet(ws_courses, ['course_id', 'name', 'code', 'section_id', 'L', 'T', 'P', 'faculty_ids', 'Asst faculty', 'room_type', 'required_room', 'lab_batches'], course_data)
+
     wb.save(filepath)
-    return filepath
-
-
-if __name__ == '__main__':
-    generate_template('timetable_import_template.xlsx', prefill_user_data=True)
-    print("Template generated successfully.")

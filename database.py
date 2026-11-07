@@ -1,16 +1,18 @@
 """
-database.py - SQLite relational persistence layer for AutoSchedule.
+database.py - SQLite database persistence for AutoSchedule.
 
-Replaces JSON storage with SQLite.
-Stores working configuration, rooms, faculty, sections, batches, courses,
-and generated timetable assignments using normalized relational tables.
+Stores:
+- Working configuration (working days, times, breaks)
+- Rooms, Faculty, Sections, Batches, Courses
+- Course-to-Faculty and Course-to-Batch relations
+- Generated timetable assignments and metadata
 """
 
 import os
 import sqlite3
 import threading
 from typing import Dict, Any, Optional
-from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType
+from models import WorkingConfig, Room, Faculty, Section, Batch, Course, RoomType, Assignment
 
 DB_FILE = os.environ.get(
     'DB_FILE',
@@ -20,7 +22,6 @@ _lock = threading.RLock()
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
-    """Create and return a configured SQLite connection."""
     path = db_path or DB_FILE
     conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -29,7 +30,6 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: Optional[str] = None) -> None:
-    """Initialize SQLite database tables if they do not exist."""
     with _lock:
         conn = get_connection(db_path)
         try:
@@ -140,19 +140,32 @@ def init_db(db_path: Optional[str] = None) -> None:
                     value TEXT
                 );
                 """)
+
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM config")
+                if cur.fetchone()[0] == 0:
+                    cur.execute("""
+                        INSERT INTO config (id, start_time, end_time, slot_duration_minutes, lunch_start, lunch_end)
+                        VALUES (1, '09:00', '17:00', 60, '12:15', '13:30')
+                    """)
+                    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+                    for idx, day in enumerate(days):
+                        cur.execute("INSERT INTO config_working_days (day_order, day_name) VALUES (?, ?)", (idx, day))
+                    breaks = [('10:00', '10:15'), ('15:30', '15:45')]
+                    for idx, (b_start, b_end) in enumerate(breaks):
+                        cur.execute("INSERT INTO config_breaks (break_order, start_time, end_time) VALUES (?, ?, ?)", (idx, b_start, b_end))
         finally:
             conn.close()
 
 
 def save_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
-    """Transactional save of all entities from app_data to SQLite."""
     init_db(db_path)
     with _lock:
         conn = get_connection(db_path)
         try:
             with conn:
                 cur = conn.cursor()
-                # Clean existing records in child-first order to satisfy FKs
+                # Clean existing tables
                 cur.execute("DELETE FROM course_faculty")
                 cur.execute("DELETE FROM course_lab_batches")
                 cur.execute("DELETE FROM courses")
@@ -166,7 +179,7 @@ def save_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
                 cur.execute("DELETE FROM timetable_assignments")
                 cur.execute("DELETE FROM timetable_metadata")
 
-                # Insert Config
+                # 1. Config
                 cfg = app_data.get('config')
                 if cfg:
                     cur.execute(
@@ -184,32 +197,32 @@ def save_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
                             (idx, brk['start_time'], brk['end_time'])
                         )
 
-                # Insert Rooms
+                # 2. Rooms
                 for r in app_data.get('rooms', []):
                     cur.execute(
                         "INSERT INTO rooms (id, name, room_type, capacity, category) VALUES (?, ?, ?, ?, ?)",
                         (r.id, r.name, r.room_type, r.capacity, r.category)
                     )
 
-                # Insert Faculty
+                # 3. Faculty
                 for f in app_data.get('faculty', []):
                     cur.execute("INSERT INTO faculty (id, name) VALUES (?, ?)", (f.id, f.name))
 
-                # Insert Sections
+                # 4. Sections
                 for s in app_data.get('sections', []):
                     cur.execute(
                         "INSERT INTO sections (id, name, semester, division, strength, home_room_id) VALUES (?, ?, ?, ?, ?, ?)",
                         (s.id, s.name, int(s.semester), s.division, s.strength, s.home_room_id)
                     )
 
-                # Insert Batches
+                # 5. Batches
                 for b in app_data.get('batches', []):
                     cur.execute(
                         "INSERT INTO batches (id, name, section_id, strength, home_room_id) VALUES (?, ?, ?, ?, ?)",
                         (b.id, b.name, b.section_id, b.strength, b.home_room_id)
                     )
 
-                # Insert Courses and child links
+                # 6. Courses
                 for c in app_data.get('courses', []):
                     cur.execute(
                         """
@@ -234,10 +247,10 @@ def save_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
                             (c.id, bid, b_idx)
                         )
 
-                # Insert Timetable Assignments & Metadata (if generated result is present)
+                # 7. Timetable Result
                 result = app_data.get('result')
                 if result and isinstance(result, dict):
-                    status = result.get('status')
+                    status = result.get('status', '')
                     cur.execute("INSERT OR REPLACE INTO timetable_metadata (key, value) VALUES ('status', ?)", (str(status),))
                     assignments = result.get('assignments', [])
                     for a in assignments:
@@ -267,7 +280,6 @@ def save_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
 
 
 def load_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
-    """Load configuration, rooms, faculty, sections, batches, courses from SQLite into app_data."""
     init_db(db_path)
     with _lock:
         conn = get_connection(db_path)
@@ -297,13 +309,8 @@ def load_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
             # 2. Rooms
             cur.execute("SELECT id, name, room_type, capacity, category FROM rooms ORDER BY id")
             app_data['rooms'] = [
-                Room(
-                    id=r[0],
-                    name=r[1],
-                    room_type=r[2],
-                    capacity=r[3],
-                    category=r[4]
-                ) for r in cur.fetchall()
+                Room(id=r[0], name=r[1], room_type=r[2], capacity=r[3], category=r[4])
+                for r in cur.fetchall()
             ]
 
             # 3. Faculty
@@ -315,26 +322,15 @@ def load_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
             # 4. Sections
             cur.execute("SELECT id, name, semester, division, strength, home_room_id FROM sections ORDER BY id")
             app_data['sections'] = [
-                Section(
-                    id=r[0],
-                    name=r[1],
-                    semester=int(r[2]),
-                    division=r[3],
-                    strength=r[4],
-                    home_room_id=r[5]
-                ) for r in cur.fetchall()
+                Section(id=r[0], name=r[1], semester=int(r[2]), division=r[3], strength=r[4], home_room_id=r[5])
+                for r in cur.fetchall()
             ]
 
             # 5. Batches
             cur.execute("SELECT id, name, section_id, strength, home_room_id FROM batches ORDER BY id")
             app_data['batches'] = [
-                Batch(
-                    id=r[0],
-                    name=r[1],
-                    section_id=r[2],
-                    strength=r[3],
-                    home_room_id=r[4]
-                ) for r in cur.fetchall()
+                Batch(id=r[0], name=r[1], section_id=r[2], strength=r[3], home_room_id=r[4])
+                for r in cur.fetchall()
             ]
 
             # 6. Courses
@@ -365,5 +361,46 @@ def load_data(app_data: Dict[str, Any], db_path: Optional[str] = None) -> None:
                     lab_batches=lab_batches
                 ))
             app_data['courses'] = courses
+
+            # 7. Restore previously generated timetable if present
+            cur.execute("SELECT value FROM timetable_metadata WHERE key = 'status'")
+            status_row = cur.fetchone()
+            if status_row and status_row[0] in ('success', 'partial'):
+                cur.execute("SELECT session_id, day, start_slot_index, room_id, course_name, course_code, section_name, faculty_name, room_name, time_start, time_end, batch_name FROM timetable_assignments")
+                rows = cur.fetchall()
+                if rows and app_data.get('config'):
+                    from scheduler import SchedulingEngine
+                    engine = SchedulingEngine(
+                        config=app_data['config'],
+                        courses=app_data['courses'],
+                        rooms=app_data['rooms'],
+                        faculty_list=app_data['faculty'],
+                        sections=app_data['sections'],
+                        batches=app_data['batches']
+                    )
+                    assignments = []
+                    for row in rows:
+                        sess = engine.sessions_by_id.get(row[0])
+                        if sess:
+                            engine._assign(sess, row[1], int(row[2]), row[3])
+                        assignments.append({
+                            'session_id': row[0],
+                            'day': row[1],
+                            'start_slot_index': row[2],
+                            'room_id': row[3],
+                            'course_name': row[4],
+                            'course_code': row[5],
+                            'section_name': row[6],
+                            'faculty_name': row[7],
+                            'room_name': row[8],
+                            'time_start': row[9],
+                            'time_end': row[10],
+                            'batch_name': row[11],
+                        })
+                    app_data['engine'] = engine
+                    app_data['result'] = {
+                        'status': status_row[0],
+                        'assignments': assignments
+                    }
         finally:
             conn.close()
