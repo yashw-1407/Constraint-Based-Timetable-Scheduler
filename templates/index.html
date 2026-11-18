@@ -4,533 +4,817 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusGrid — Academic Schedule Management</title>
+    <title>CampusGrid Enterprise — Academic Timetable Scheduling System</title>
+    <!-- Modern Typography: Plus Jakarta Sans & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Cache-Busted Stylesheet -->
+    <link rel="stylesheet" href="/static/style.css?v=3.0.0">
 </head>
 
 <body>
 
-    <header>
-        <div class="header-inner">
-            <div class="header-logo">
-                <div class="logo-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+    <!-- ── Enterprise Top Header Bar ── -->
+    <header class="app-header">
+        <div class="header-container">
+            <div class="brand-group">
+                <div class="brand-logo">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="3" ry="3"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
                         <line x1="8" y1="2" x2="8" y2="6"></line>
                         <line x1="3" y1="10" x2="21" y2="10"></line>
                     </svg>
                 </div>
-                <div class="header-text">
-                    <h1>CampusGrid <span class="version-badge">Institutional Edition</span></h1>
-                    <span class="header-subtitle">Automated Academic Schedule Management System</span>
+                <div class="brand-details">
+                    <div class="brand-title">
+                        CampusGrid
+                        <span class="badge-env">Enterprise v2.5</span>
+                    </div>
+                    <div class="brand-tagline">Academic Timetable &amp; Resource Management System</div>
                 </div>
             </div>
-            <div class="header-status">
-                <span class="status-indicator-dot"></span>
-                <span class="status-indicator-text">CSP Engine Ready</span>
+
+            <div class="header-controls">
+                <div class="engine-status-pill">
+                    <span class="status-pulse-dot"></span>
+                    <span class="engine-status-label">CSP Engine Active</span>
+                </div>
+
+                <div class="header-divider"></div>
+
+                <!-- Scenario Quick Loader -->
+                <div class="quick-scenario-box">
+                    <select id="demo-scenario-select" class="select-scenario" title="Select academic dataset scenario">
+                        <option value="standard">Standard Academic Load (Full Dept)</option>
+                        <option value="bottleneck">High Utilization (Lab Intensive)</option>
+                        <option value="infeasible">Conflict Verification Test</option>
+                        <option value="single_section">Single Department Sample</option>
+                    </select>
+                    <button id="btn-load-demo" class="btn btn-header" title="Load chosen scenario into SQLite">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Load Dataset
+                    </button>
+                </div>
+
+                <button id="btn-clear-data" class="btn btn-ghost-danger btn-header-danger" title="Clear all database tables">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Reset
+                </button>
             </div>
         </div>
     </header>
 
-    <nav class="tabs">
-        <button class="tab-btn active" data-target="config">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            Configuration
-        </button>
-        <button class="tab-btn" data-target="rooms">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-            Rooms
-        </button>
-        <button class="tab-btn" data-target="faculty">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            Faculty
-        </button>
-        <button class="tab-btn" data-target="sections">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            Sections &amp; Batches
-        </button>
-        <button class="tab-btn" data-target="courses">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-            Courses (L-T-P)
-        </button>
-        <button class="tab-btn" data-target="import">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            Import Excel
-        </button>
-        <button class="tab-btn" data-target="generate">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            Generate Schedule
-        </button>
-        <button class="tab-btn" data-target="views">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            Timetable Views
-        </button>
+    <!-- ── Segmented Navigation Strip ── -->
+    <nav class="app-nav">
+        <div class="nav-container">
+            <div class="nav-tabs tabs">
+                <button class="tab-btn active" data-target="config">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configuration
+                </button>
+                <button class="tab-btn" data-target="rooms">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Rooms
+                </button>
+                <button class="tab-btn" data-target="faculty">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    Faculty
+                </button>
+                <button class="tab-btn" data-target="sections">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Sections &amp; Batches
+                </button>
+                <button class="tab-btn" data-target="courses">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                    Courses (L-T-P)
+                </button>
+                <button class="tab-btn" data-target="import">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Excel Import
+                </button>
+                <button class="tab-btn tab-highlight" data-target="generate">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    Generate Schedule
+                </button>
+                <button class="tab-btn tab-highlight-secondary" data-target="views">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Timetable Views
+                </button>
+            </div>
+        </div>
     </nav>
 
+    <!-- ── Main Workspace ── -->
     <main id="content">
 
-        <!-- Configuration Tab -->
+        <!-- ========================================================
+             1. CONFIGURATION TAB
+             ======================================================== -->
         <section id="config" class="tab-content active">
-            <div class="page-header">
-                <div>
-                    <h2>System Configuration</h2>
-                    <p class="page-desc">Define institutional working hours, breaks, and period durations.</p>
-                </div>
-                <div class="actions">
-                    <select id="demo-scenario-select" class="select-control">
-                        <option value="standard">Standard Semester (Full Load)</option>
-                        <option value="bottleneck">High Utilization (Lab Intensive)</option>
-                        <option value="infeasible">Conflict Verification Scenario</option>
-                        <option value="single_section">Single Department Sample</option>
-                    </select>
-                    <button id="btn-load-demo" class="btn btn-secondary">
-                        Load Sample Data
-                    </button>
-                    <button id="btn-clear-data" class="btn btn-ghost-danger">
-                        Reset All Data
-                    </button>
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Academic Calendar &amp; Timing Configuration</h2>
+                    <p>Establish institutional working days, daily lecture hours, period slot durations, and recurring breaks.</p>
                 </div>
             </div>
 
-            <div class="card">
-                <form id="form-config">
-                    <div class="form-group">
-                        <label>Working Days</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Monday">
-                                Monday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Tuesday">
-                                Tuesday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Wednesday">
-                                Wednesday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Thursday">
-                                Thursday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Friday">
-                                Friday</label>
-                            <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Saturday">
-                                Saturday</label>
+            <div class="layout-grid-2col">
+                <div class="card form-card">
+                    <div class="card-head">
+                        <div class="card-head-icon icon-indigo">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        </div>
+                        <div>
+                            <h3>Working Parameters</h3>
+                            <span class="card-subtitle">Saved globally and enforced across all timetables</span>
                         </div>
                     </div>
 
-                    <div class="form-row">
+                    <form id="form-config" class="form-body">
                         <div class="form-group">
-                            <label for="start_time">Start Time</label>
-                            <input type="time" id="start_time" name="start_time" value="09:00" required>
+                            <label class="form-label">Instructional Days</label>
+                            <div class="checkbox-pills-row">
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Monday"> Monday</label>
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Tuesday"> Tuesday</label>
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Wednesday"> Wednesday</label>
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Thursday"> Thursday</label>
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Friday"> Friday</label>
+                                <label class="checkbox-pill"><input type="checkbox" name="working_days" value="Saturday"> Saturday</label>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="end_time">End Time</label>
-                            <input type="time" id="end_time" name="end_time" value="17:00" required>
+
+                        <div class="form-grid-3">
+                            <div class="form-group">
+                                <label class="form-label" for="start_time">College Start Time</label>
+                                <input type="time" id="start_time" name="start_time" value="09:00" class="input-modern" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="end_time">College End Time</label>
+                                <input type="time" id="end_time" name="end_time" value="17:00" class="input-modern" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="slot_duration_minutes">Slot Duration (Min)</label>
+                                <input type="number" id="slot_duration_minutes" name="slot_duration_minutes" value="60" class="input-modern" min="30" max="120" step="5" required>
+                            </div>
                         </div>
+
+                        <div class="form-grid-2">
+                            <div class="form-group">
+                                <label class="form-label" for="lunch_start">Lunch Recess Begins</label>
+                                <input type="time" id="lunch_start" name="lunch_start" value="13:00" class="input-modern" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="lunch_end">Lunch Recess Ends</label>
+                                <input type="time" id="lunch_end" name="lunch_end" value="14:00" class="input-modern" required>
+                            </div>
+                        </div>
+
                         <div class="form-group">
-                            <label for="slot_duration_minutes">Slot Duration (min)</label>
-                            <input type="number" id="slot_duration_minutes" name="slot_duration_minutes" value="60"
-                                required>
+                            <div class="form-label-row">
+                                <label class="form-label">Institutional Tea / Mid-Day Breaks</label>
+                                <button type="button" id="btn-add-break" class="btn btn-xs btn-outline-primary">+ Add Break</button>
+                            </div>
+                            <div id="breaks-container" class="breaks-list"></div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                            Save Timing Configuration
+                        </button>
+                    </form>
+                </div>
+
+                <div class="card preview-card" id="time-slots-display">
+                    <div class="card-head">
+                        <div class="card-head-icon icon-emerald">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        </div>
+                        <div>
+                            <h3>Computed Daily Timeline Slots</h3>
+                            <span class="card-subtitle">Generated automatically based on duration and break windows</span>
                         </div>
                     </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="lunch_start">Lunch Start</label>
-                            <input type="time" id="lunch_start" name="lunch_start" value="13:00" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="lunch_end">Lunch End</label>
-                            <input type="time" id="lunch_end" name="lunch_end" value="14:00" required>
-                        </div>
+                    <div class="timeline-slot-container">
+                        <ul id="time-slots-list" class="slot-list-modern"></ul>
                     </div>
-
-                    <div class="form-group">
-                        <label>Extra Breaks</label>
-                        <div id="breaks-container"></div>
-                        <button type="button" id="btn-add-break" class="btn btn-sm">+ Add Break</button>
-                    </div>
-
-                    <button type="submit" class="btn primary" style="margin-top: 8px;">Save Configuration</button>
-                </form>
-            </div>
-
-            <div class="card" id="time-slots-display">
-                <h3>Generated Time Slots</h3>
-                <ul id="time-slots-list" class="slot-list"></ul>
+                </div>
             </div>
         </section>
 
-        <!-- Rooms Tab -->
+        <!-- ========================================================
+             2. ROOMS TAB
+             ======================================================== -->
         <section id="rooms" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Rooms</h2>
-                    <p class="page-desc">Add theory classrooms and lab rooms with their capacities.</p>
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Campus Classrooms &amp; Laboratories</h2>
+                    <p>Manage learning spaces, theoretical lecture halls, and specialized laboratory infrastructure.</p>
                 </div>
             </div>
-            <div class="card">
-                <h3 class="form-title">Add New Room</h3>
-                <form id="form-room" class="add-form">
-                    <input type="text" id="room_id" placeholder="Room ID (e.g. R101)" required>
-                    <input type="text" id="room_name" placeholder="Display Name" required>
-                    <select id="room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <input type="number" id="room_capacity" placeholder="Capacity (optional)">
-                    <input type="text" id="room_category" placeholder="Category (optional)">
-                    <button type="submit" class="btn primary">Add Room</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-rooms">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Capacity</th>
-                            <th>Category</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
 
-        <!-- Faculty Tab -->
-        <section id="faculty" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Faculty</h2>
-                    <p class="page-desc">Register faculty members who will be assigned to courses.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add New Faculty</h3>
-                <form id="form-faculty" class="add-form">
-                    <input type="text" id="faculty_id" placeholder="Faculty ID (e.g. F1)" required>
-                    <input type="text" id="faculty_name" placeholder="Full Name" required>
-                    <button type="submit" class="btn primary">Add Faculty</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-faculty">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Sections Tab -->
-        <section id="sections" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Sections &amp; Batches</h2>
-                    <p class="page-desc">Define class sections and their lab batches.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Section</h3>
-                <form id="form-section" class="add-form">
-                    <input type="text" id="section_id" placeholder="Section ID (e.g. 3A)" required>
-                    <input type="text" id="section_name" placeholder="Name" required>
-                    <input type="number" id="section_semester" placeholder="Semester" required>
-                    <input type="text" id="section_division" placeholder="Division" required>
-                    <input type="number" id="section_strength" placeholder="Strength (optional)">
-                    <select id="section_home_room_id">
-                        <option value="">Home Room (Optional)</option>
-                    </select>
-                    <button type="submit" class="btn primary">Add Section</button>
-                </form>
-            </div>
-            <div class="card">
-                <table id="table-sections">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Semester</th>
-                            <th>Division</th>
-                            <th>Strength</th>
-                            <th>Home Room</th>
-                            <th>Batches</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Lab Batch</h3>
-                <form id="form-batch" class="add-form">
-                    <input type="text" id="batch_id" placeholder="Batch ID (e.g. A1)" required>
-                    <input type="text" id="batch_name" placeholder="Batch Name" required>
-                    <select id="batch_section" required>
-                        <option value="">Select Section</option>
-                    </select>
-                    <input type="number" id="batch_strength" placeholder="Batch Strength" required>
-                    <button type="submit" class="btn primary">Add Batch</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- Courses Tab -->
-        <section id="courses" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Courses</h2>
-                    <p class="page-desc">Define courses with L-T-P credits, faculty, and room requirements.</p>
-                </div>
-            </div>
-            <div class="card">
-                <h3 class="form-title">Add Course</h3>
-                <form id="form-course" class="add-form complex-form">
-                    <input type="text" id="course_id" placeholder="Course ID (e.g. CS301_3A)" required>
-                    <input type="text" id="course_name" placeholder="Course Name" required>
-                    <input type="text" id="course_code" placeholder="Course Code" required>
-                    <select id="course_section" required>
-                        <option value="">Select Section</option>
-                    </select>
-
-                    <div class="ltp-inputs">
-                        <input type="number" step="0.5" id="course_l" placeholder="L (Lectures)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_t" placeholder="T (Tutorials)" value="0" min="0"
-                            required>
-                        <input type="number" step="0.5" id="course_p" placeholder="P (Practicals)" value="0" min="0"
-                            required>
+            <div class="card form-card">
+                <div class="card-head">
+                    <div class="card-head-icon icon-blue">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     </div>
-
-                    <select id="course_faculty" required>
-                        <option value="">Select Faculty</option>
-                    </select>
-
-                    <div style="display:flex; flex-direction:column; gap:4px;">
-                        <select id="course_assistant_faculty">
-                            <option value="">Select Assistant Faculty (Optional)</option>
+                    <div>
+                        <h3 class="form-title">Register New Room</h3>
+                        <span class="card-subtitle">Specify room capability and physical seating capacity</span>
+                    </div>
+                </div>
+                <form id="form-room" class="form-grid-5">
+                    <div class="form-group">
+                        <label class="form-label" for="room_id">Room ID</label>
+                        <input type="text" id="room_id" class="input-modern" placeholder="e.g. R101" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="room_name">Display Name</label>
+                        <input type="text" id="room_name" class="input-modern" placeholder="e.g. Hall 101" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="room_type">Space Type</label>
+                        <select id="room_type" class="select-modern" required>
+                            <option value="THEORY_ROOM">Theory Room</option>
+                            <option value="LAB">Laboratory</option>
                         </select>
-                        <div id="course_asst_tags" style="display:flex; flex-wrap:wrap; gap:4px; min-height:18px;"></div>
                     </div>
-
-                    <select id="course_room_type" required>
-                        <option value="THEORY_ROOM">Theory Room</option>
-                        <option value="LAB">Lab</option>
-                    </select>
-                    <select id="course_required_room">
-                        <option value="">Required Room (Optional)</option>
-                    </select>
-
-                    <select id="course_lab_batches" multiple style="display: none; height: 90px;"
-                        title="Hold Ctrl/Cmd to select multiple">
-                    </select>
-
-                    <button type="submit" class="btn primary">Add Course</button>
+                    <div class="form-group">
+                        <label class="form-label" for="room_capacity">Capacity (Seats)</label>
+                        <input type="number" id="room_capacity" class="input-modern" placeholder="e.g. 60" min="10">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="room_category">Category (Optional)</label>
+                        <input type="text" id="room_category" class="input-modern" placeholder="e.g. CS Wing">
+                    </div>
+                    <div class="form-group form-actions-col">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Room
+                        </button>
+                    </div>
                 </form>
             </div>
-            <div class="card">
-                <table id="table-courses">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Code</th>
-                            <th>Name</th>
-                            <th>Section</th>
-                            <th>L-T-P</th>
-                            <th>Batches</th>
-                            <th>Faculty</th>
-                            <th>Asst Faculty</th>
-                            <th>Room Type</th>
-                            <th>Req Room</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+
+            <div class="card table-card">
+                <div class="table-responsive">
+                    <table id="table-rooms" class="table-modern">
+                        <thead>
+                            <tr>
+                                <th>Room ID</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Capacity</th>
+                                <th>Category</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
-        <!-- Import Data Tab -->
-        <section id="import" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Import Academic Dataset</h2>
-                    <p class="page-desc">Upload an Excel workbook (.xlsx) to populate Faculty, Rooms, Sections, Batches, and Courses into SQLite.</p>
+        <!-- ========================================================
+             3. FACULTY TAB
+             ======================================================== -->
+        <section id="faculty" class="tab-content">
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Academic Faculty Roster</h2>
+                    <p>Register professors and instructors to be mapped to theoretical and practical courses.</p>
                 </div>
-                <div class="actions">
-                    <a href="/api/download-template" class="btn btn-secondary" style="text-decoration:none;">
+            </div>
+
+            <div class="card form-card">
+                <div class="card-head">
+                    <div class="card-head-icon icon-purple">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                    <div>
+                        <h3 class="form-title">Register Faculty Member</h3>
+                        <span class="card-subtitle">Define unique instructor identifier and academic title</span>
+                    </div>
+                </div>
+                <form id="form-faculty" class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label" for="faculty_id">Faculty ID</label>
+                        <input type="text" id="faculty_id" class="input-modern" placeholder="e.g. F101" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="faculty_name">Full Name with Title</label>
+                        <input type="text" id="faculty_name" class="input-modern" placeholder="e.g. Dr. Rajesh Sharma" required>
+                    </div>
+                    <div class="form-group form-actions-col">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Faculty
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card table-card">
+                <div class="table-responsive">
+                    <table id="table-faculty" class="table-modern">
+                        <thead>
+                            <tr>
+                                <th>Faculty ID</th>
+                                <th>Full Name</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================
+             4. SECTIONS & BATCHES TAB
+             ======================================================== -->
+        <section id="sections" class="tab-content">
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Academic Sections &amp; Laboratory Batches</h2>
+                    <p>Establish student cohorts, semesters, division groupings, and laboratory subdivisions.</p>
+                </div>
+            </div>
+
+            <div class="card form-card">
+                <div class="card-head">
+                    <div class="card-head-icon icon-teal">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="form-title">Create Class Section</h3>
+                        <span class="card-subtitle">Set semester, division strength, and optional home-room binding</span>
+                    </div>
+                </div>
+                <form id="form-section" class="form-grid-6">
+                    <div class="form-group">
+                        <label class="form-label" for="section_id">Section ID</label>
+                        <input type="text" id="section_id" class="input-modern" placeholder="e.g. 3A" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="section_name">Display Name</label>
+                        <input type="text" id="section_name" class="input-modern" placeholder="e.g. CSE 3A" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="section_semester">Semester</label>
+                        <input type="number" id="section_semester" class="input-modern" placeholder="3" min="1" max="8" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="section_division">Division</label>
+                        <input type="text" id="section_division" class="input-modern" placeholder="A" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="section_strength">Strength</label>
+                        <input type="number" id="section_strength" class="input-modern" placeholder="e.g. 60">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="section_home_room_id">Home Room</label>
+                        <select id="section_home_room_id" class="select-modern">
+                            <option value="">Home Room (Optional)</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-actions-col-full">
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Section
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card table-card">
+                <div class="table-responsive">
+                    <table id="table-sections" class="table-modern">
+                        <thead>
+                            <tr>
+                                <th>Section ID</th>
+                                <th>Name</th>
+                                <th>Semester</th>
+                                <th>Division</th>
+                                <th>Strength</th>
+                                <th>Home Room</th>
+                                <th>Assigned Batches</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Lab Batch Sub-Manager -->
+            <div class="card form-card" style="margin-top: 1.5rem;">
+                <div class="card-head">
+                    <div class="card-head-icon icon-amber">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="form-title">Add Laboratory Practical Batch</h3>
+                        <span class="card-subtitle">Subdivide a section into smaller practical laboratory cohorts</span>
+                    </div>
+                </div>
+                <form id="form-batch" class="form-grid-4">
+                    <div class="form-group">
+                        <label class="form-label" for="batch_id">Batch ID</label>
+                        <input type="text" id="batch_id" class="input-modern" placeholder="e.g. A1" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="batch_name">Batch Name</label>
+                        <input type="text" id="batch_name" class="input-modern" placeholder="e.g. Batch A1" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="batch_section">Parent Section</label>
+                        <select id="batch_section" class="select-modern" required>
+                            <option value="">Select Section</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="batch_strength">Batch Strength</label>
+                        <input type="number" id="batch_strength" class="input-modern" placeholder="e.g. 30" required>
+                    </div>
+                    <div class="form-group form-actions-col-full">
+                        <button type="submit" class="btn btn-secondary btn-block">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add Lab Batch to Section
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ========================================================
+             5. COURSES TAB
+             ======================================================== -->
+        <section id="courses" class="tab-content">
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Academic Courses &amp; L-T-P Curriculum</h2>
+                    <p>Map courses with lecture (L), tutorial (T), and practical (P) credits, assigned faculty, and room bindings.</p>
+                </div>
+            </div>
+
+            <div class="card form-card">
+                <div class="card-head">
+                    <div class="card-head-icon icon-indigo">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="form-title">Configure Curriculum Course</h3>
+                        <span class="card-subtitle">All fields are mapped directly to CSP scheduling variables</span>
+                    </div>
+                </div>
+
+                <form id="form-course" class="form-body">
+                    <div class="form-grid-4">
+                        <div class="form-group">
+                            <label class="form-label" for="course_id">Course ID (Internal)</label>
+                            <input type="text" id="course_id" class="input-modern" placeholder="e.g. CS301_3A" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="course_code">Course Code</label>
+                            <input type="text" id="course_code" class="input-modern" placeholder="e.g. CS301" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="course_name">Course Title</label>
+                            <input type="text" id="course_name" class="input-modern" placeholder="e.g. Data Structures &amp; Algorithms" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="course_section">Assigned Section</label>
+                            <select id="course_section" class="select-modern" required>
+                                <option value="">Select Section</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-grid-4" style="margin-top: 10px;">
+                        <div class="form-group">
+                            <label class="form-label">Weekly Credits (L - T - P)</label>
+                            <div class="ltp-pill-group">
+                                <div class="ltp-box">
+                                    <span class="ltp-tag">L</span>
+                                    <input type="number" step="0.5" id="course_l" value="3" min="0" title="Lecture Hours" required>
+                                </div>
+                                <div class="ltp-box">
+                                    <span class="ltp-tag">T</span>
+                                    <input type="number" step="0.5" id="course_t" value="0" min="0" title="Tutorial Hours" required>
+                                </div>
+                                <div class="ltp-box">
+                                    <span class="ltp-tag">P</span>
+                                    <input type="number" step="0.5" id="course_p" value="0" min="0" title="Practical Lab Hours" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="course_faculty">Lead Instructor</label>
+                            <select id="course_faculty" class="select-modern" required>
+                                <option value="">Select Faculty</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="course_assistant_faculty">Co-Instructor / Assistant</label>
+                            <select id="course_assistant_faculty" class="select-modern">
+                                <option value="">Select Assistant Faculty (Optional)</option>
+                            </select>
+                            <div id="course_asst_tags" class="asst-tags-container"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="course_room_type">Required Space Type</label>
+                            <select id="course_room_type" class="select-modern" required>
+                                <option value="THEORY_ROOM">Theory Classroom</option>
+                                <option value="LAB">Laboratory Space</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2" style="margin-top: 10px;">
+                        <div class="form-group">
+                            <label class="form-label" for="course_required_room">Specific Room Binding (Optional)</label>
+                            <select id="course_required_room" class="select-modern">
+                                <option value="">No Preference (Auto-Allocate)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="course_lab_batches">Practical Lab Batches (When P &gt; 0)</label>
+                            <select id="course_lab_batches" multiple class="select-modern-multiple" style="display: none; height: 75px;" title="Hold Ctrl/Cmd to select multiple">
+                            </select>
+                            <div class="help-text">Visible only when Practical credit P &gt; 0. Hold Ctrl/Cmd to select multiple.</div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="margin-top: 12px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add Course to Curriculum
+                    </button>
+                </form>
+            </div>
+
+            <div class="card table-card">
+                <div class="table-responsive">
+                    <table id="table-courses" class="table-modern">
+                        <thead>
+                            <tr>
+                                <th>Course ID</th>
+                                <th>Code</th>
+                                <th>Course Name</th>
+                                <th>Section</th>
+                                <th>L-T-P</th>
+                                <th>Batches</th>
+                                <th>Lead Faculty</th>
+                                <th>Co-Instructors</th>
+                                <th>Type</th>
+                                <th>Required Room</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================
+             6. EXCEL IMPORT TAB
+             ======================================================== -->
+        <section id="import" class="tab-content">
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Academic Dataset Import &amp; Batch Upload</h2>
+                    <p>Import an entire semester's faculty, spaces, divisions, batches, and course requirements via Excel (.xlsx).</p>
+                </div>
+                <div class="view-header-actions">
+                    <a href="/api/download-template" class="btn btn-secondary">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Download Excel Template
+                        Download Starter Template (.xlsx)
                     </a>
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom: 24px;">
-                <h3 class="form-title">Upload Excel Workbook</h3>
-                <p style="color: var(--text-secondary); font-size: 13.5px; margin-bottom: 20px;">
-                    Ensure your workbook contains required sheets: <strong>Faculty</strong>, <strong>Rooms</strong>, <strong>Sections</strong>, <strong>Batches</strong>, and <strong>Courses</strong>.
-                </p>
-                
+            <div class="card form-card">
+                <div class="card-head">
+                    <div class="card-head-icon icon-emerald">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    </div>
+                    <div>
+                        <h3>Upload Institutional Spreadsheet</h3>
+                        <span class="card-subtitle">Pre-validates foreign keys and integrity before persisting to SQLite</span>
+                    </div>
+                </div>
+
                 <div class="upload-dropzone" id="dropzone-box">
                     <input type="file" id="excel-file" accept=".xlsx">
                     <div class="upload-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                     </div>
-                    <div style="font-size: 14px; font-weight: 600; color: var(--text);">Click or drag &amp; drop your .xlsx workbook here</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Supports Microsoft Excel (.xlsx) workbooks</div>
+                    <div class="upload-prompt">Click or drag &amp; drop your workbook here</div>
+                    <div class="upload-hint">Workbook must include sheets: <strong>Faculty</strong>, <strong>Rooms</strong>, <strong>Sections</strong>, <strong>Batches</strong>, and <strong>Courses</strong></div>
                     <div id="selected-file-name" class="upload-filename" style="display: none;"></div>
                 </div>
 
-                <div style="display: flex; gap: 12px; align-items: center;">
+                <div class="upload-actions-row">
                     <button id="btn-preview-import" class="btn btn-secondary">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        Preview Data
+                        Validate &amp; Preview Dataset
                     </button>
-                    <button id="btn-import-excel" class="btn primary" style="display: none;">
+                    <button id="btn-import-excel" class="btn btn-primary" style="display: none;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        Import to SQLite
+                        Persist Dataset to SQLite
                     </button>
                 </div>
 
-                <div id="import-preview" style="display: none; margin-top: 24px; padding: 20px; background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
-                    <h4 style="margin-bottom: 12px; font-size: 15px; font-weight: 700; color: var(--text);">Dataset Preview Summary</h4>
-                    <div id="preview-counts" style="margin-bottom: 12px;"></div>
-                    <div id="preview-errors" style="color: #dc2626; font-weight: 600; font-size: 13.5px;"></div>
+                <div id="import-preview" class="preview-summary-card" style="display: none;">
+                    <h4>Validation Audit Results</h4>
+                    <div id="preview-counts"></div>
+                    <div id="preview-errors"></div>
                 </div>
             </div>
         </section>
 
-        <!-- Generate Tab -->
+        <!-- ========================================================
+             7. GENERATE TAB
+             ======================================================== -->
         <section id="generate" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Schedule Generation Engine</h2>
-                    <p class="page-desc">Automated timetable generator with conflict detection and resource optimization.</p>
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>CSP Schedule Generation Engine</h2>
+                    <p>Mathematical constraint solver with Minimum Remaining Values (MRV) heuristic and back-checking.</p>
                 </div>
             </div>
 
-            <div class="algo-info card">
-                <div class="algo-info-grid">
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">6</div>
-                        <div class="algo-stat-label">Institutional Rules</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">7</div>
-                        <div class="algo-stat-label">Quality Metrics</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">Real-Time</div>
-                        <div class="algo-stat-label">Conflict Detection</div>
-                    </div>
-                    <div class="algo-stat">
-                        <div class="algo-stat-value">&lt; 50ms</div>
-                        <div class="algo-stat-label">Average Run Speed</div>
-                    </div>
+            <!-- Algorithm Metrics Overview -->
+            <div class="engine-stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Hard Constraints</div>
+                    <div class="stat-value">6</div>
+                    <div class="stat-desc">Zero Overlap Guarantee</div>
                 </div>
-                <div class="algo-constraints">
-                    <span class="constraint-tag">Section Clashes Prohibited</span>
-                    <span class="constraint-tag">Faculty Overlap Prevention</span>
-                    <span class="constraint-tag">Room Capacity &amp; Type Match</span>
-                    <span class="constraint-tag">Continuous Laboratory Blocks</span>
-                    <span class="constraint-tag">Section Home-Room Binding</span>
-                    <span class="constraint-tag">Co-Instructor Synchronization</span>
+                <div class="stat-card">
+                    <div class="stat-label">Quality Objectives</div>
+                    <div class="stat-value">7</div>
+                    <div class="stat-desc">Multi-Metric Soft Scoring</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Heuristic Strategy</div>
+                    <div class="stat-value" style="font-size: 1.35rem; padding-top: 4px;">MRV + Degree</div>
+                    <div class="stat-desc">Minimum Remaining Values</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Average Runtime</div>
+                    <div class="stat-value">&lt; 60ms</div>
+                    <div class="stat-desc">Instantaneous Convergence</div>
                 </div>
             </div>
 
-
-            <!-- Pre-Generate Summary Panel (v1) -->
-            <div class="card" id="pre-gen-summary" style="display:none; margin-bottom:16px;">
-                <h3 class="form-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                    Pre-Generation Resource Audit &amp; Summary
-                </h3>
-                <div id="summary-grid"
-                    style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="card constraints-pill-card">
+                <div class="constraints-title">Mathematical Constraints Enforced:</div>
+                <div class="constraints-tags">
+                    <span class="constraint-chip">Zero Faculty Double-Booking</span>
+                    <span class="constraint-chip">Zero Room Collision</span>
+                    <span class="constraint-chip">Continuous Multi-Hour Lab Blocks</span>
+                    <span class="constraint-chip">Lab / Classroom Capacity Matching</span>
+                    <span class="constraint-chip">Co-Instructor Simultaneous Synchronization</span>
+                    <span class="constraint-chip">Section Home-Room Binding</span>
                 </div>
-                <div id="summary-warnings" style="margin-bottom:16px;"></div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                    <button id="btn-confirm-generate" class="btn-generate" style="flex:1;min-width:200px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                        Confirm &amp; Generate
+            </div>
+
+            <!-- Pre-Generate Summary Audit Modal / Panel -->
+            <div class="card" id="pre-gen-summary" style="display: none; margin-bottom: 1.5rem; border: 2px solid var(--primary-light);">
+                <div class="card-head">
+                    <div class="card-head-icon icon-indigo">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    </div>
+                    <div>
+                        <h3>Pre-Flight Resource Audit</h3>
+                        <span class="card-subtitle">Verifying supply vs. demand balance across sections, hours, and rooms</span>
+                    </div>
+                </div>
+                <div id="summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 16px 0;"></div>
+                <div id="summary-warnings" style="margin-bottom: 16px;"></div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button id="btn-confirm-generate" class="btn btn-primary" style="flex: 1; min-width: 220px; height: 46px; font-size: 14.5px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        Confirm &amp; Run Generation Engine
                     </button>
-                    <button id="btn-cancel-generate" class="btn btn-secondary" style="flex:0;min-width:110px;">Cancel</button>
+                    <button id="btn-cancel-generate" class="btn btn-secondary" style="height: 46px;">Cancel</button>
                 </div>
             </div>
 
-            <div class="generate-controls card">
-                <button id="btn-generate" class="btn-generate">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                    Generate Timetable
-                </button>
-                <button id="btn-validate" class="btn btn-secondary">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    Audit &amp; Validate Configuration
-                </button>
+            <!-- Generation Action Bar -->
+            <div class="card generate-action-card">
+                <div class="generate-action-left">
+                    <button id="btn-generate" class="btn-generate-hero">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        Generate Timetable
+                    </button>
+                    <button id="btn-validate" class="btn btn-secondary btn-validate">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        Pre-Validate Data &amp; Constraints
+                    </button>
+                </div>
+                <div class="generate-action-right">
+                    <span class="engine-pill">Engine Ready</span>
+                </div>
             </div>
 
-            <div id="generate-status" style="margin-top: 20px; display: none;">
+            <!-- Generation Status Results -->
+            <div id="generate-status" style="margin-top: 1.5rem; display: none;">
                 <div class="status-card" id="gen-status-card">
                     <h3 id="gen-status-text"></h3>
                     <div id="gen-score" style="display: none;"></div>
-                    <div id="gen-diagnostics" style="display: none; color: #c62828; margin-top: 10px;"></div>
+                    <div id="gen-diagnostics" style="display: none; color: #dc2626; margin-top: 10px;"></div>
                 </div>
             </div>
 
-            <div id="validation-report" style="display: none; margin-top: 20px;">
+            <div id="validation-report" style="display: none; margin-top: 1.5rem;">
                 <div class="card">
-                    <h3>Validation Report</h3>
+                    <h3 class="form-title">Configuration Audit Findings</h3>
                     <div id="val-content"></div>
                 </div>
             </div>
         </section>
 
-        <!-- Timetable Views Tab -->
+        <!-- ========================================================
+             8. TIMETABLE VIEWS TAB
+             ======================================================== -->
         <section id="views" class="tab-content">
-            <div class="page-header">
-                <div>
-                    <h2>Timetable Views</h2>
-                    <p class="page-desc">Browse the generated schedule by section, faculty, or room.</p>
+            <div class="view-header-card">
+                <div class="view-header-text">
+                    <h2>Institutional Timetable Schedule Views</h2>
+                    <p>Review the optimized schedule across master, section-wise, faculty-wise, or classroom-wise perspectives.</p>
                 </div>
-                <button id="btn-print" class="btn primary" style="display: none;" onclick="window.print()">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6 14" width="12" height="8"></rect></svg>
-                    Print / Export PDF
-                </button>
+                <div class="view-header-actions">
+                    <button id="btn-print" class="btn btn-primary" style="display: none;" onclick="window.print()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6 14" width="12" height="8"></rect></svg>
+                        Print / Export to PDF
+                    </button>
+                </div>
             </div>
 
-            <div class="view-tabs">
-                <button class="view-btn active" data-view="master">Master View</button>
-                <button class="view-btn" data-view="section">By Section</button>
-                <button class="view-btn" data-view="faculty">By Faculty</button>
-                <button class="view-btn" data-view="room">By Room</button>
+            <!-- View Perspective Selector Bar -->
+            <div class="view-perspective-bar">
+                <div class="view-tabs-segmented view-tabs">
+                    <button class="view-btn active" data-view="master">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                        Master View
+                    </button>
+                    <button class="view-btn" data-view="section">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        By Section
+                    </button>
+                    <button class="view-btn" data-view="faculty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        By Faculty
+                    </button>
+                    <button class="view-btn" data-view="room">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+                        By Room
+                    </button>
+                </div>
+
+                <div id="view-controls" class="view-filter-controls">
+                    <select id="view-selector" class="select-modern" style="display: none; min-width: 250px;"></select>
+                </div>
             </div>
 
-            <div id="view-controls" style="margin: 14px 0; display: flex; gap: 12px; align-items: center;">
-                <select id="view-selector" class="select-control" style="display: none; min-width: 240px;"></select>
+            <!-- Timetable Legend -->
+            <div class="timetable-legend">
+                <div class="legend-item"><span class="legend-box legend-theory"></span> Theory Lecture</div>
+                <div class="legend-item"><span class="legend-box legend-lab"></span> Laboratory Practical Block</div>
+                <div class="legend-item"><span class="legend-box legend-break"></span> Scheduled Tea / Lunch Recess</div>
+                <div class="legend-item"><span class="legend-box legend-free"></span> Available Idle Slot</div>
             </div>
 
-            <div id="view-content">
+            <!-- Timetable Grid Rendering Container -->
+            <div id="view-content" class="timetable-render-zone">
                 <div class="empty-state">
-                    <p>No timetable generated yet.<br>Go to <strong>Generate</strong> tab to create one.</p>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <h4>No Timetable Generated Yet</h4>
+                    <p>Navigate to the <strong>Generate Schedule</strong> tab and click <em>Generate Timetable</em> to compute the optimal schedule.</p>
                 </div>
             </div>
         </section>
 
     </main>
 
+    <!-- Global Toast Notification Alert -->
     <div id="notification" class="notification hidden"></div>
 
-    <script src="/static/app.js"></script>
+    <!-- Application Script with Cache-Buster -->
+    <script src="/static/app.js?v=3.0.0"></script>
 
+    <!-- Pre-Flight Summary Capture Script -->
     <script>
-        // ── v1: Pre-Generate Summary ──────────────────────────────────────────────
         (function () {
             const btnGen = document.getElementById('btn-generate');
             const btnConf = document.getElementById('btn-confirm-generate');
@@ -538,9 +822,8 @@
             const panel = document.getElementById('pre-gen-summary');
             const grid = document.getElementById('summary-grid');
             const warnings = document.getElementById('summary-warnings');
-            const controls = document.querySelector('.generate-controls.card');
+            const controls = document.querySelector('.generate-action-card');
 
-            // Flag: skip summary and go straight to generation (after user confirms)
             let _skipSummary = false;
 
             function statCard(label, value, color) {
@@ -552,7 +835,6 @@
             }
 
             btnGen && btnGen.addEventListener('click', async (e) => {
-                // If confirmed, let the existing app.js listener run normally
                 if (_skipSummary) { _skipSummary = false; return; }
 
                 e.stopImmediatePropagation();
@@ -561,51 +843,49 @@
                     const data = await res.json();
 
                     if (!data.config_set) {
-                        alert('Please save a configuration first (Config tab).');
+                        alert('Please save a timing configuration first.');
                         return;
                     }
                     if (data.courses === 0) {
-                        alert('No courses defined. Please add courses before generating.');
+                        alert('No courses defined. Please add courses or load a sample dataset before generating.');
                         return;
                     }
 
                     grid.innerHTML = [
-                        statCard('Sections', data.sections, '#1c7ed6'),
-                        statCard('Batches', data.batches, '#1c7ed6'),
-                        statCard('Faculty', data.faculty, '#1c7ed6'),
-                        statCard('Theory Rooms', data.theory_rooms, '#2f9e44'),
-                        statCard('Lab Rooms', data.lab_rooms, '#2f9e44'),
-                        statCard('Courses', data.courses, '#7048e8'),
-                        statCard('Theory Sessions / week', data.theory_sessions_per_week, '#e67700'),
-                        statCard('Lab Sessions / week', data.lab_sessions_per_week, '#e67700'),
-                        statCard('Total Hours / week', data.total_weekly_session_hours, '#c92a2a'),
-                        statCard('Available Slots / week', data.available_slots_per_week, '#495057'),
+                        statCard('Sections', data.sections, '#3b82f6'),
+                        statCard('Batches', data.batches, '#3b82f6'),
+                        statCard('Faculty', data.faculty, '#8b5cf6'),
+                        statCard('Theory Rooms', data.theory_rooms, '#10b981'),
+                        statCard('Lab Rooms', data.lab_rooms, '#10b981'),
+                        statCard('Courses', data.courses, '#6366f1'),
+                        statCard('Theory Sessions / Wk', data.theory_sessions_per_week, '#f59e0b'),
+                        statCard('Lab Sessions / Wk', data.lab_sessions_per_week, '#f59e0b'),
+                        statCard('Total Session Hours', data.total_weekly_session_hours, '#ef4444'),
+                        statCard('Available Weekly Slots', data.available_slots_per_week, '#475569'),
                     ].join('');
 
-                    // Warnings
                     let w = '';
                     if (data.total_weekly_session_hours > data.available_slots_per_week * 0.9)
-                        w += '<p style="color:#c92a2a;font-weight:600;">[Warning] Session hours are very close to (or exceed) available slots — scheduling may fail.</p>';
+                        w += '<div style="background:#fef2f2;border:1px solid #fecaca;padding:10px 14px;border-radius:8px;color:#991b1b;font-size:13px;font-weight:600;">[Warning] Session hours approach total capacity; schedule generation may encounter tight slot constraints.</div>';
                     if (data.lab_rooms === 0 && data.lab_sessions_per_week > 0)
-                        w += '<p style="color:#e67700;font-weight:600;">[Warning] Lab sessions exist but no Lab rooms are defined.</p>';
+                        w += '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 14px;border-radius:8px;color:#92400e;font-size:13px;font-weight:600;margin-top:6px;">[Warning] Lab courses are defined but no Laboratory rooms exist.</div>';
                     warnings.innerHTML = w;
 
                     panel.style.display = 'block';
-                    controls.style.display = 'none';
+                    if (controls) controls.style.display = 'none';
                 } catch (err) {
-                    alert('Could not load summary: ' + err.message);
+                    alert('Could not verify summary: ' + err.message);
                 }
-            }, true /* capture so it fires before the existing listener */);
+            }, true);
 
             btnCancel && btnCancel.addEventListener('click', () => {
                 panel.style.display = 'none';
-                controls.style.display = '';
+                if (controls) controls.style.display = 'flex';
             });
 
             btnConf && btnConf.addEventListener('click', () => {
                 panel.style.display = 'none';
-                controls.style.display = '';
-                // Set flag so the capture listener passes through, then click
+                if (controls) controls.style.display = 'flex';
                 _skipSummary = true;
                 document.getElementById('btn-generate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
             });

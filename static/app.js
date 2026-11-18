@@ -192,15 +192,16 @@ async function loadTableData(endpoint, tableId, columns, rowIdKey = 'id') {
                 tr.appendChild(td);
             });
             const actionTd = document.createElement('td');
+            actionTd.style.textAlign = 'right';
             const editBtn = document.createElement('button');
-            editBtn.className = 'btn';
-            editBtn.style.marginRight = '5px';
+            editBtn.className = 'btn btn-secondary btn-sm';
+            editBtn.style.marginRight = '6px';
             editBtn.textContent = 'Edit';
             editBtn.onclick = () => editItem(endpoint, item);
             actionTd.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
+            delBtn.className = 'btn btn-ghost-danger btn-sm danger';
             delBtn.textContent = 'Delete';
             delBtn.onclick = () => deleteItem(endpoint, item[rowIdKey], () => loadTableData(endpoint, tableId, columns, rowIdKey));
             actionTd.appendChild(delBtn);
@@ -404,15 +405,16 @@ async function loadSections() {
             tr.appendChild(batchesTd);
 
             const actionTd = document.createElement('td');
+            actionTd.style.textAlign = 'right';
             const editBtn = document.createElement('button');
-            editBtn.className = 'btn';
-            editBtn.style.marginRight = '5px';
+            editBtn.className = 'btn btn-secondary btn-sm';
+            editBtn.style.marginRight = '6px';
             editBtn.textContent = 'Edit';
             editBtn.onclick = () => editItem('/api/sections', s);
             actionTd.appendChild(editBtn);
 
             const delBtn = document.createElement('button');
-            delBtn.className = 'btn danger';
+            delBtn.className = 'btn btn-ghost-danger btn-sm danger';
             delBtn.textContent = 'Delete';
             delBtn.onclick = async () => {
                 if (!confirm('Delete section and its batches?')) return;

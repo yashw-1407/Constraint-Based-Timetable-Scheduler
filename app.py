@@ -20,6 +20,14 @@ from demo_data import get_demo_data
 from excel_import import parse_excel, generate_template
 
 app = Flask(__name__)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
 
 # Application state in-memory cache (backed by SQLite)
 app_data = {
