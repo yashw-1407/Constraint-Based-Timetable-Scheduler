@@ -694,18 +694,42 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
 
             let detailsHtml = '';
             if (res.soft_score && res.soft_score.details) {
-                detailsHtml = '<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">' +
-                    Object.entries(res.soft_score.details)
-                    .map(([k, v]) => `<span style="background:white;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;font-size:12px;color:#334155;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
-                    .join('') + '</div>';
+                detailsHtml = `
+                    <div style="margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+                    ${Object.entries(res.soft_score.details).map(([k, v]) => {
+                        const pct = Math.round((v.score / v.max) * 100);
+                        const barColor = pct >= 80 ? '#10b981' : (pct >= 50 ? '#3b82f6' : '#f59e0b');
+                        return `
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                                    <span style="font-size: 12px; font-weight: 600; color: #334155;">${v.description || k}</span>
+                                    <span style="font-size: 12px; font-weight: 700; color: ${barColor};">${v.score}/${v.max} pts</span>
+                                </div>
+                                <div style="height: 6px; width: 100%; background: #f1f5f9; border-radius: 9999px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${pct}%; background: ${barColor}; border-radius: 9999px;"></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                    </div>
+                `;
             }
             scoreDiv.innerHTML = `
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-                    <div>
-                        <div style="font-size:1.25rem;font-weight:700;color:var(--success);">${res.soft_score ? res.soft_score.percentage : 0}% Distribution Score</div>
-                        <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">${stats.total_sessions || 0} sessions allocated · <strong>${stats.backtracks || 0} backtracks</strong> · ${stats.time_ms || 0}ms computation time</div>
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+                    <div style="display:flex; align-items:center; gap: 16px;">
+                        <div style="width: 56px; height: 56px; border-radius: 50%; background: #ecfdf5; border: 3px solid #10b981; display:flex; align-items:center; justify-content:center; font-size: 16px; font-weight: 800; color: #047857;">
+                            ${res.soft_score ? res.soft_score.percentage : 0}%
+                        </div>
+                        <div>
+                            <div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">Quality &amp; Comfort Rating</div>
+                            <div style="font-size: 12.5px; color: #64748b; margin-top: 2px;">
+                                <strong style="color:#0f172a;">${stats.total_sessions || 0}</strong> sessions placed &middot; 
+                                <strong style="color:#059669;">${stats.backtracks || 0} backtracks</strong> &middot; 
+                                <strong style="color:#2563eb;">${stats.time_ms || 0} ms</strong> computation time
+                            </div>
+                        </div>
                     </div>
-                    <button type="button" class="btn primary btn-sm" onclick="document.querySelector('.tab-btn[data-target=\\'views\\']').click()">
+                    <button type="button" class="btn primary" onclick="document.querySelector('.tab-btn[data-target=\\'views\\']').click()">
                         Open Timetable Views &rarr;
                     </button>
                 </div>
@@ -741,7 +765,15 @@ document.getElementById('btn-validate')?.addEventListener('click', async () => {
     try {
         const res = await fetchJSON('/api/validation');
         if (res.valid) {
-            content.innerHTML = '<span style="color:green;font-weight:600;">All hard constraints satisfied. Timetable is conflict-free!</span>';
+            content.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:12px 16px; color:#065f46;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <div>
+                        <strong style="font-size:14px;">Mathematical Verification Passed: 0 Hard Constraint Conflicts</strong>
+                        <div style="font-size:12px; color:#047857; margin-top:2px;">Audited across all Faculty, Rooms, Sections, and Lab Batches. Zero overlapping slots.</div>
+                    </div>
+                </div>
+            `;
         } else {
             content.innerHTML = `<ul style="color:red;">${res.conflicts.map(c => `<li>${c}</li>`).join('')}</ul>`;
         }
@@ -1040,6 +1072,22 @@ function loadTimetableViewsInit() {
 // ---------------------------------------------------------------------------
 // Excel Import Tab
 // ---------------------------------------------------------------------------
+const excelFileInput = document.getElementById('excel-file');
+const selectedFileNameDiv = document.getElementById('selected-file-name');
+
+excelFileInput?.addEventListener('change', () => {
+    if (excelFileInput.files && excelFileInput.files.length > 0) {
+        if (selectedFileNameDiv) {
+            selectedFileNameDiv.textContent = `Selected: ${excelFileInput.files[0].name} (${(excelFileInput.files[0].size / 1024).toFixed(1)} KB)`;
+            selectedFileNameDiv.style.display = 'block';
+        }
+    } else {
+        if (selectedFileNameDiv) {
+            selectedFileNameDiv.style.display = 'none';
+        }
+    }
+});
+
 document.getElementById('btn-preview-import')?.addEventListener('click', async () => {
     const fileInput = document.getElementById('excel-file');
     if (!fileInput || !fileInput.files.length) {
