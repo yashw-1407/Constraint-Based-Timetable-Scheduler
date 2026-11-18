@@ -66,14 +66,23 @@ def manage_config():
 
     try:
         data = request.get_json()
+        raw_breaks = data.get('breaks', [])
+        clean_breaks = []
+        for b in raw_breaks:
+            if isinstance(b, dict):
+                st = str(b.get('start_time') or b.get('start') or '').strip()
+                et = str(b.get('end_time') or b.get('end') or '').strip()
+                if st and et:
+                    clean_breaks.append({'start_time': st, 'end_time': et})
+
         config = WorkingConfig(
             working_days=data['working_days'],
-            start_time=data['start_time'],
-            end_time=data['end_time'],
+            start_time=data['start_time'].strip(),
+            end_time=data['end_time'].strip(),
             slot_duration_minutes=int(data.get('slot_duration_minutes', 60)),
-            breaks=data.get('breaks', []),
-            lunch_start=data['lunch_start'],
-            lunch_end=data['lunch_end']
+            breaks=clean_breaks,
+            lunch_start=data['lunch_start'].strip(),
+            lunch_end=data['lunch_end'].strip()
         )
         app_data['config'] = config
         save_data(app_data)

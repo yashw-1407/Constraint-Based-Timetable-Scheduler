@@ -111,9 +111,9 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
     e.preventDefault();
     const working_days = Array.from(document.querySelectorAll('input[name="working_days"]:checked')).map(cb => cb.value);
     const breaks = Array.from(document.querySelectorAll('.break-row')).map(row => ({
-        start_time: row.querySelector('.break-start').value,
-        end_time: row.querySelector('.break-end').value
-    }));
+        start_time: row.querySelector('.break-start')?.value || '',
+        end_time: row.querySelector('.break-end')?.value || ''
+    })).filter(b => b.start_time && b.end_time);
 
     const payload = {
         working_days,
@@ -128,6 +128,7 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
     try {
         await fetchJSON('/api/config', { method: 'POST', body: JSON.stringify(payload) });
         showNotification('Configuration saved');
+        globalConfig = null;
         loadTimeSlots();
     } catch (e) { }
 });
@@ -153,6 +154,7 @@ document.getElementById('btn-load-demo')?.addEventListener('click', async () => 
             body: JSON.stringify({ scenario: scenario })
         });
         showNotification(res.message);
+        globalConfig = null;
         loadConfig();
     } catch (e) { }
 });
@@ -162,6 +164,7 @@ document.getElementById('btn-clear-data')?.addEventListener('click', async () =>
     try {
         await fetchJSON('/api/clear', { method: 'POST' });
         showNotification('Data cleared successfully');
+        globalConfig = null;
         loadConfig();
     } catch (e) { }
 });
@@ -751,23 +754,22 @@ document.getElementById('btn-validate')?.addEventListener('click', async () => {
 let globalConfig = null;
 
 async function fetchConfigForViews() {
-    if (!globalConfig) {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-            globalConfig = await res.json();
-        }
+    const res = await fetch('/api/config');
+    if (res.ok) {
+        globalConfig = await res.json();
     }
     return globalConfig;
 }
 
 function generateTimelineColumns(config, timeSlots) {
-    let breaks = [...(config.breaks || [])];
+    if (!config) return (timeSlots || []).map(s => ({ type: 'slot', ...s }));
+    let breaks = [...(config.breaks || [])].filter(b => b && b.start_time && b.end_time);
     if (config.lunch_start && config.lunch_end) {
         breaks.push({ start_time: config.lunch_start, end_time: config.lunch_end, is_lunch: true });
     }
     breaks.sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-    let sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    let sortedSlots = [...(timeSlots || [])].sort((a, b) => a.start_time.localeCompare(b.start_time));
     let all_blocks = [];
     sortedSlots.forEach(s => all_blocks.push({ type: 'slot', ...s }));
     breaks.forEach(b => all_blocks.push({ type: 'break', ...b }));
@@ -868,6 +870,12 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         let currentGroup = null;
 
         timeline.forEach(col => {
+            if (col.type === 'break') {
+                if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
+                colsHTML.push({ type: 'break', col: col });
+                return;
+            }
+
             let activeSessions = filtered.filter(a => {
                 let matchFilter = filterType === 'master' ? (a.day === rg.day && a.section_id === rg.filterVal) : (a.day === rg.day);
                 return matchFilter && a.time_start <= col.start_time && a.time_end >= col.end_time;
@@ -875,11 +883,7 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
 
             if (activeSessions.length === 0) {
                 if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
-                if (col.type === 'break') {
-                    colsHTML.push({ type: 'break', col: col });
-                } else {
-                    colsHTML.push({ type: 'empty' });
-                }
+                colsHTML.push({ type: 'empty' });
             } else {
                 activeSessions.sort((a, b) => (a.batch_name || '').localeCompare(b.batch_name || ''));
                 let sig = activeSessions.map(a => `${a.course_name}_${a.batch_name}_${a.room_name}`).join('|');
