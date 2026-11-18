@@ -602,8 +602,8 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     btn.innerHTML = 'Generating...';
     statusDiv.style.display = 'block';
     statusCard.className = 'status-card';
-    statusText.textContent = 'Running CSP solver... please wait';
-    statusText.style.color = 'var(--text-muted)';
+    statusText.textContent = 'Generating institutional schedule... please wait';
+    statusText.style.color = 'var(--text-secondary)';
     scoreDiv.style.display = 'none';
     diagDiv.style.display = 'none';
 
@@ -613,21 +613,26 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
         if (res.status === 'success') {
             const stats = res.stats || {};
             statusCard.className = 'status-card success-card';
-            statusText.innerHTML = `Timetable generated successfully!`;
+            statusText.innerHTML = `Schedule Generated Successfully`;
             statusText.style.color = 'var(--success)';
             scoreDiv.style.display = 'block';
 
             let detailsHtml = '';
             if (res.soft_score && res.soft_score.details) {
-                detailsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">' +
+                detailsHtml = '<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">' +
                     Object.entries(res.soft_score.details)
-                    .map(([k, v]) => `<span style="background:white;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:13px;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
+                    .map(([k, v]) => `<span style="background:white;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;font-size:12px;color:#334155;">${v.description || k}: <strong>${v.score}/${v.max}</strong></span>`)
                     .join('') + '</div>';
             }
             scoreDiv.innerHTML = `
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                    <div style="font-size:1.4rem;font-weight:700;color:var(--success);">${res.soft_score ? res.soft_score.percentage : 0}% Quality</div>
-                    <div style="font-size:13px;color:var(--text-muted);">${stats.total_sessions || 0} sessions · ${stats.backtracks || 0} backtracks · ${stats.time_ms || 0}ms</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <div style="font-size:1.25rem;font-weight:700;color:var(--success);">${res.soft_score ? res.soft_score.percentage : 0}% Distribution Score</div>
+                        <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">${stats.total_sessions || 0} sessions allocated · ${stats.time_ms || 0}ms computation time</div>
+                    </div>
+                    <button type="button" class="btn primary btn-sm" onclick="document.querySelector('.tab-btn[data-target=\\'views\\']').click()">
+                        Open Timetable Views &rarr;
+                    </button>
                 </div>
                 ${detailsHtml}
             `;
@@ -824,7 +829,7 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
 
         colsHTML.forEach(item => {
             if (item.type === 'break') {
-                tr.innerHTML += `<td class="tt-cell-break">${item.col.is_lunch ? 'L U N C H' : 'B R E A K'}</td>`;
+                tr.innerHTML += `<td class="tt-cell-break"><span class="break-tag">${item.col.is_lunch ? 'LUNCH' : 'BREAK'}</span></td>`;
             } else if (item.type === 'empty') {
                 tr.innerHTML += `<td class="tt-cell-empty"></td>`;
             } else {

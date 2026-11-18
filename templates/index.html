@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoSchedule — Academic Timetable System</title>
+    <title>CampusGrid — Academic Schedule Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -13,17 +16,23 @@
     <header>
         <div class="header-inner">
             <div class="header-logo">
-                <div class="logo-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                <div class="logo-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
                         <line x1="8" y1="2" x2="8" y2="6"></line>
                         <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg></div>
-                <div class="header-text">
-                    <h1>AutoSchedule</h1>
-                    <span class="header-subtitle">Academic Timetable Scheduling System</span>
+                    </svg>
                 </div>
+                <div class="header-text">
+                    <h1>CampusGrid</h1>
+                    <span class="header-subtitle">Academic Schedule Management System</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <span class="status-indicator-dot"></span>
+                <span class="status-indicator-text">System Active</span>
             </div>
         </div>
     </header>
@@ -46,20 +55,20 @@
             <div class="page-header">
                 <div>
                     <h2>System Configuration</h2>
-                    <p class="page-desc">Set working hours, breaks, and time slot duration before adding data.</p>
+                    <p class="page-desc">Define institutional working hours, breaks, and period durations.</p>
                 </div>
-                <div class="actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <select id="demo-scenario-select" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: 500; background: #fff; cursor: pointer; color: var(--text-dark);">
-                        <option value="standard">Case 1: Standard Academic Load (Balanced)</option>
-                        <option value="bottleneck">Case 2: Resource Bottleneck (High Contention)</option>
-                        <option value="infeasible">Case 3: Infeasible Conflict (Stress Test)</option>
-                        <option value="single_section">Case 4: Single Section (Viva Walkthrough)</option>
+                <div class="actions">
+                    <select id="demo-scenario-select" class="select-control">
+                        <option value="standard">Standard Semester (Full Load)</option>
+                        <option value="bottleneck">High Utilization (Lab Intensive)</option>
+                        <option value="infeasible">Conflict Verification Scenario</option>
+                        <option value="single_section">Single Department Sample</option>
                     </select>
-                    <button id="btn-load-demo" class="btn success">
-                        Load Demo Data
+                    <button id="btn-load-demo" class="btn btn-secondary">
+                        Load Sample Data
                     </button>
-                    <button id="btn-clear-data" class="btn danger">
-                        Clear All Data
+                    <button id="btn-clear-data" class="btn btn-ghost-danger">
+                        Reset All Data
                     </button>
                 </div>
             </div>
@@ -365,8 +374,8 @@
         <section id="generate" class="tab-content">
             <div class="page-header">
                 <div>
-                    <h2>Generate Timetable</h2>
-                    <p class="page-desc">Run the CSP backtracking solver to produce a conflict-free timetable.</p>
+                    <h2>Schedule Generation Engine</h2>
+                    <p class="page-desc">Automated timetable generator with conflict detection and resource optimization.</p>
                 </div>
             </div>
 
@@ -374,28 +383,28 @@
                 <div class="algo-info-grid">
                     <div class="algo-stat">
                         <div class="algo-stat-value">6</div>
-                        <div class="algo-stat-label">Hard Constraints</div>
+                        <div class="algo-stat-label">Institutional Rules</div>
                     </div>
                     <div class="algo-stat">
                         <div class="algo-stat-value">7</div>
-                        <div class="algo-stat-label">Soft Constraints</div>
+                        <div class="algo-stat-label">Quality Metrics</div>
                     </div>
                     <div class="algo-stat">
-                        <div class="algo-stat-value">MRV</div>
-                        <div class="algo-stat-label">Heuristic</div>
+                        <div class="algo-stat-value">Real-Time</div>
+                        <div class="algo-stat-label">Conflict Detection</div>
                     </div>
                     <div class="algo-stat">
-                        <div class="algo-stat-value">&lt;1s</div>
-                        <div class="algo-stat-label">Typical Runtime</div>
+                        <div class="algo-stat-value">&lt; 50ms</div>
+                        <div class="algo-stat-label">Average Run Speed</div>
                     </div>
                 </div>
                 <div class="algo-constraints">
-                    <span class="constraint-tag">No section conflicts</span>
-                    <span class="constraint-tag">No faculty clashes</span>
-                    <span class="constraint-tag">No room double-booking</span>
-                    <span class="constraint-tag">Room type suitability</span>
-                    <span class="constraint-tag">Room capacity check</span>
-                    <span class="constraint-tag">Lab consecutive slots</span>
+                    <span class="constraint-tag">Section Clashes Prohibited</span>
+                    <span class="constraint-tag">Faculty Overlap Prevention</span>
+                    <span class="constraint-tag">Room Capacity &amp; Type Match</span>
+                    <span class="constraint-tag">Continuous Laboratory Blocks</span>
+                    <span class="constraint-tag">Section Home-Room Binding</span>
+                    <span class="constraint-tag">Co-Instructor Synchronization</span>
                 </div>
             </div>
 
@@ -492,9 +501,9 @@
             let _skipSummary = false;
 
             function statCard(label, value, color) {
-                return `<div style="background:#f9f9fb;border:1px solid #e3e6f0;border-radius:10px;padding:14px 16px;text-align:center;">
-                        <div style="font-size:28px;font-weight:700;color:${color || '#3b5bdb'};">${value}</div>
-                        <div style="font-size:12px;color:#666;margin-top:4px;">${label}</div>
+                return `<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+                        <div style="font-size:22px;font-weight:700;color:${color || '#0f172a'};">${value}</div>
+                        <div style="font-size:11.5px;color:#64748b;margin-top:2px;font-weight:500;">${label}</div>
                     </div>`;
             }
 
