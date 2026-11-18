@@ -643,8 +643,25 @@ def download_template():
 # Server Entry Point
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
+    import threading
+    import time
+    import webbrowser
+
+    port = int(os.environ.get('PORT', 5001))
+    url = f"http://127.0.0.1:{port}"
+
+    def _open_browser():
+        time.sleep(1.2)
+        try:
+            webbrowser.open_new(url)
+        except Exception:
+            pass
+
+    if os.environ.get('NO_BROWSER') != '1':
+        threading.Thread(target=_open_browser, daemon=True).start()
+
     print("=" * 60)
-    print("  Constraint-Based Academic Timetable Scheduler")
-    print("  Open http://127.0.0.1:5000 in your browser")
+    print("  Constraint-Based Academic Timetable Scheduler (main)")
+    print(f"  Open {url} in your browser")
     print("=" * 60)
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=port)

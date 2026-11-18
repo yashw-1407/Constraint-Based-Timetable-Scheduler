@@ -8,6 +8,20 @@ Persisted with **SQLite**, providing conflict-free timetable generation with con
 
 ## Quick Start
 
+### 1-Click / 1-Tap Launch (Recommended)
+Simply double-click:
+- **`run.bat`** (or **`START.bat`**) in this folder, or
+- The **Academic Timetable Scheduler** shortcut on your Desktop!
+
+It will automatically:
+1. Detect Python and verify/install required dependencies (`Flask`, `openpyxl`).
+2. Start the local Flask web server.
+3. Automatically launch your default web browser tab to `http://127.0.0.1:5001`.
+
+---
+
+### Manual Launch (Command Line)
+
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
@@ -16,7 +30,7 @@ pip install -r requirements.txt
 python app.py
 
 # 3. Open in your browser
-http://127.0.0.1:5000
+http://127.0.0.1:5001
 ```
 
 ### Walkthrough

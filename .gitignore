@@ -28,3 +28,8 @@ scheduler_trace.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Analysis & Agent tools
+.agents/
+graphify-out/
+
