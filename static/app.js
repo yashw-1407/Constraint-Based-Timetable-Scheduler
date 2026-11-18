@@ -244,6 +244,21 @@ function editItem(endpoint, item) {
     }
 
     if (prefix === 'course_') {
+        if (item.faculty_ids && item.faculty_ids.length > 0) {
+            document.getElementById('course_faculty').value = item.faculty_ids[0];
+        } else {
+            document.getElementById('course_faculty').value = '';
+        }
+
+        selectedAsstFaculty = [];
+        if (Array.isArray(item.assistant_faculty_ids)) {
+            item.assistant_faculty_ids.forEach(fid => {
+                const fac = (window._facultyList || []).find(f => f.id === fid);
+                selectedAsstFaculty.push({ id: fid, name: fac ? fac.name : fid });
+            });
+        }
+        renderAsstFacultyTags();
+
         updateBatchDropdown();
         const batchSelect = document.getElementById('course_lab_batches');
         if (item.p > 0) {
@@ -255,13 +270,6 @@ function editItem(endpoint, item) {
             }
         } else {
             batchSelect.style.display = 'none';
-        }
-
-        const asstSelect = document.getElementById('course_assistant_faculty');
-        if (asstSelect && Array.isArray(item.assistant_faculty_ids)) {
-            Array.from(asstSelect.options).forEach(opt => {
-                opt.selected = item.assistant_faculty_ids.includes(opt.value);
-            });
         }
     }
 
@@ -279,6 +287,10 @@ function editItem(endpoint, item) {
 function resetEditState(formId) {
     editingEndpoint = null;
     editingId = null;
+    if (formId === 'form-course') {
+        selectedAsstFaculty = [];
+        renderAsstFacultyTags();
+    }
     const form = document.getElementById(formId);
     if (form) {
         const btn = form.querySelector('button[type="submit"]');
@@ -371,7 +383,18 @@ async function loadSections() {
             // Batches column
             const batchesTd = document.createElement('td');
             if (s.batches && s.batches.length > 0) {
-                batchesTd.textContent = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ');
+                const batchTotal = s.batches.reduce((sum, b) => sum + (b.strength || 0), 0);
+                let badge = '';
+                if (s.strength !== null && s.strength !== undefined) {
+                    if (batchTotal > s.strength) {
+                        badge = ` <span class="badge" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:11px;padding:2px 6px;" title="Total batch strength (${batchTotal}) exceeds section capacity (${s.strength})">Total: ${batchTotal}/${s.strength} (Exceeds Limit!)</span>`;
+                    } else if (batchTotal === s.strength) {
+                        badge = ` <span class="badge" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;font-size:11px;padding:2px 6px;">Total: ${batchTotal}/${s.strength} (Full)</span>`;
+                    } else {
+                        badge = ` <span class="badge" style="background:#f8fafc;color:#475569;border:1px solid #cbd5e1;font-size:11px;padding:2px 6px;">Total: ${batchTotal}/${s.strength}</span>`;
+                    }
+                }
+                batchesTd.innerHTML = s.batches.map(b => `${b.name} (${b.strength || '?'})`).join(', ') + badge;
             } else {
                 batchesTd.textContent = 'None';
             }
@@ -398,6 +421,8 @@ async function loadSections() {
             tr.appendChild(actionTd);
             tbody.appendChild(tr);
         });
+
+        window._sectionsData = sections;
 
         const batchSecSelect = document.getElementById('batch_section');
         batchSecSelect.innerHTML = '<option value="">Select Section</option>';
@@ -445,6 +470,22 @@ document.getElementById('form-section')?.addEventListener('submit', async (e) =>
 
 document.getElementById('form-batch')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const secId = document.getElementById('batch_section').value;
+    const batchStrength = parseInt(document.getElementById('batch_strength').value) || 0;
+
+    // Client-side section capacity validation
+    if (window._sectionsData && secId) {
+        const sec = window._sectionsData.find(s => s.id === secId);
+        if (sec && sec.strength) {
+            const existingTotal = (sec.batches || [])
+                .filter(b => b.id !== (editingEndpoint === '/api/batches' ? editingId : null))
+                .reduce((sum, b) => sum + (b.strength || 0), 0);
+            if (existingTotal + batchStrength > sec.strength) {
+                showNotification(`Total batch strength (${existingTotal + batchStrength}) would exceed Section '${sec.name}' capacity (${sec.strength})!`, 'error');
+                return;
+            }
+        }
+    }
     const payload = {
         id: document.getElementById('batch_id').value,
         name: document.getElementById('batch_name').value,
@@ -490,13 +531,14 @@ async function loadCourses() {
         sections.forEach(s => secSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`);
 
         const faculty = await fetchJSON('/api/faculty');
+        window._facultyList = faculty;
         const facSelect = document.getElementById('course_faculty');
         facSelect.innerHTML = '<option value="">Select Faculty</option>';
         faculty.forEach(f => facSelect.innerHTML += `<option value="${f.id}">${f.name}</option>`);
 
         const asstFacSelect = document.getElementById('course_assistant_faculty');
         if (asstFacSelect) {
-            asstFacSelect.innerHTML = '';
+            asstFacSelect.innerHTML = '<option value="">Select Assistant Faculty (Optional)</option>';
             faculty.forEach(f => asstFacSelect.innerHTML += `<option value="${f.id}">${f.name}</option>`);
         }
 
@@ -508,6 +550,36 @@ async function loadCourses() {
         window._sectionsData = sections;
     } catch (e) { }
 }
+
+let selectedAsstFaculty = [];
+
+function renderAsstFacultyTags() {
+    const container = document.getElementById('course_asst_tags');
+    if (!container) return;
+    container.innerHTML = selectedAsstFaculty.map(f => `
+        <span class="badge" style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:11.5px;padding:2px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;">
+            ${f.name}
+            <span style="cursor:pointer;font-weight:bold;margin-left:2px;" onclick="removeAsstFaculty('${f.id}')">&times;</span>
+        </span>
+    `).join('');
+}
+
+window.removeAsstFaculty = function(id) {
+    selectedAsstFaculty = selectedAsstFaculty.filter(f => f.id !== id);
+    renderAsstFacultyTags();
+};
+
+document.getElementById('course_assistant_faculty')?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    const fac = (window._facultyList || []).find(f => f.id === val);
+    const name = fac ? fac.name : val;
+    if (!selectedAsstFaculty.some(item => item.id === val)) {
+        selectedAsstFaculty.push({ id: val, name: name });
+        renderAsstFacultyTags();
+    }
+    e.target.value = '';
+});
 
 function updateBatchDropdown() {
     const secId = document.getElementById('course_section').value;
@@ -540,11 +612,9 @@ document.getElementById('course_p')?.addEventListener('input', (e) => {
 
 document.getElementById('form-course')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const facSelect = document.getElementById('course_faculty');
-    const facultyIds = Array.from(facSelect.selectedOptions).map(opt => opt.value).filter(val => val !== "");
-
-    const asstFacSelect = document.getElementById('course_assistant_faculty');
-    const assistantFacultyIds = asstFacSelect ? Array.from(asstFacSelect.selectedOptions).map(opt => opt.value).filter(val => val !== "") : [];
+    const mainFac = document.getElementById('course_faculty').value;
+    const facultyIds = mainFac ? [mainFac] : [];
+    const assistantFacultyIds = selectedAsstFaculty.map(f => f.id);
 
     const batchSelect = document.getElementById('course_lab_batches');
     const labBatches = Array.from(batchSelect.selectedOptions).map(opt => opt.value);
@@ -574,6 +644,8 @@ document.getElementById('form-course')?.addEventListener('submit', async (e) => 
         }
         resetEditState('form-course');
         clearForm('form-course');
+        selectedAsstFaculty = [];
+        renderAsstFacultyTags();
 
         document.getElementById('course_l').value = '0';
         document.getElementById('course_t').value = '0';
@@ -628,7 +700,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
                     <div>
                         <div style="font-size:1.25rem;font-weight:700;color:var(--success);">${res.soft_score ? res.soft_score.percentage : 0}% Distribution Score</div>
-                        <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">${stats.total_sessions || 0} sessions allocated · ${stats.time_ms || 0}ms computation time</div>
+                        <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">${stats.total_sessions || 0} sessions allocated · <strong>${stats.backtracks || 0} backtracks</strong> · ${stats.time_ms || 0}ms computation time</div>
                     </div>
                     <button type="button" class="btn primary btn-sm" onclick="document.querySelector('.tab-btn[data-target=\\'views\\']').click()">
                         Open Timetable Views &rarr;
@@ -770,9 +842,9 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
 
     timeline.forEach(col => {
         if (col.type === 'break') {
-            headRow.innerHTML += `<th class="break-col">${col.is_lunch ? 'LUNCH' : 'BREAK'}<br><span style="font-size:10px;font-weight:normal;">${col.start_time}-${col.end_time}</span></th>`;
+            headRow.innerHTML += `<th class="break-col"><div class="break-title">${col.is_lunch ? 'LUNCH' : 'BREAK'}</div><div class="break-time">${col.start_time} - ${col.end_time}</div></th>`;
         } else {
-            headRow.innerHTML += `<th>${col.start_time}-${col.end_time}</th>`;
+            headRow.innerHTML += `<th><div class="slot-time">${col.start_time} - ${col.end_time}</div></th>`;
         }
     });
     thead.appendChild(headRow);
@@ -796,12 +868,6 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
         let currentGroup = null;
 
         timeline.forEach(col => {
-            if (col.type === 'break') {
-                if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
-                colsHTML.push({ type: 'break', col: col });
-                return;
-            }
-
             let activeSessions = filtered.filter(a => {
                 let matchFilter = filterType === 'master' ? (a.day === rg.day && a.section_id === rg.filterVal) : (a.day === rg.day);
                 return matchFilter && a.time_start <= col.start_time && a.time_end >= col.end_time;
@@ -809,10 +875,14 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
 
             if (activeSessions.length === 0) {
                 if (currentGroup) { colsHTML.push(currentGroup); currentGroup = null; }
-                colsHTML.push({ type: 'empty' });
+                if (col.type === 'break') {
+                    colsHTML.push({ type: 'break', col: col });
+                } else {
+                    colsHTML.push({ type: 'empty' });
+                }
             } else {
-                activeSessions.sort((a, b) => a.session_id.localeCompare(b.session_id));
-                let sig = activeSessions.map(a => a.session_id).join('|');
+                activeSessions.sort((a, b) => (a.batch_name || '').localeCompare(b.batch_name || ''));
+                let sig = activeSessions.map(a => `${a.course_name}_${a.batch_name}_${a.room_name}`).join('|');
 
                 if (!currentGroup) {
                     currentGroup = { type: 'sessions', sig: sig, sessions: activeSessions, colspan: 1 };
@@ -839,24 +909,21 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
                 let detailsArr = arr.map(a => {
                     let facs = a.faculty_name ? a.faculty_name : (a.faculty_ids ? a.faculty_ids.join(', ') : '');
                     let bBadge = (a.batch_name && a.batch_name !== 'ALL') ? `<span class="tt-batch">${a.batch_name}</span>` : '';
-                    let rRoom = `<span>Room: ${a.room_name}</span>`;
-                    let rFac = `<span>Faculty: ${facs}</span>`;
-                    let rSec = filterType !== 'master' ? `<span>${a.section_name || a.section_id}</span>` : '';
+                    let rRoom = a.room_name ? `Room: ${a.room_name}` : '';
+                    let rFac = facs && filterType !== 'faculty' ? `Faculty: ${facs}` : '';
+                    let rSec = (filterType !== 'master' && filterType !== 'section' && a.section_name) ? a.section_name : '';
 
-                    let meta = [];
-                    if (rSec) meta.push(rSec);
-                    if (rFac && filterType !== 'faculty') meta.push(rFac);
-                    if (rRoom && filterType !== 'room') meta.push(rRoom);
+                    let meta = [rSec, rFac, rRoom].filter(Boolean);
 
                     return `
                         <div class="tt-session-card">
                             <div class="tt-subj">${a.course_name} ${bBadge}</div>
-                            <div class="tt-meta">${meta.join(' | ')}</div>
+                            ${meta.length > 0 ? `<div class="tt-meta">${meta.map(m => `<span>${m}</span>`).join('<span class="tt-meta-divider">|</span>')}</div>` : ''}
                         </div>
                     `;
                 });
 
-                let htmlBlock = detailsArr.join('<hr style="margin:4px 0; border:0; border-top:1px dashed rgba(0,0,0,0.1);">');
+                let htmlBlock = detailsArr.join('<hr class="tt-session-divider">');
                 tr.innerHTML += `<td colspan="${item.colspan}" class="${overallCss}">${htmlBlock}</td>`;
             }
         });
@@ -865,7 +932,10 @@ function renderUnifiedGrid(assignments, filterType, filterValue, config, timeSlo
     });
 
     table.appendChild(tbody);
-    container.appendChild(table);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'timetable-wrapper';
+    wrapper.appendChild(table);
+    container.appendChild(wrapper);
 }
 
 async function renderMasterView() {

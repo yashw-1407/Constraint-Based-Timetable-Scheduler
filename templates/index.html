@@ -30,10 +30,6 @@
                     <span class="header-subtitle">Academic Schedule Management System</span>
                 </div>
             </div>
-            <div class="header-status">
-                <span class="status-indicator-dot"></span>
-                <span class="status-indicator-text">System Active</span>
-            </div>
         </div>
     </header>
 
@@ -285,17 +281,15 @@
                             required>
                     </div>
 
-                    <div class="faculty-selects">
-                        <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Main Faculty (Ctrl+click for
-                                multiple)</label>
-                            <select id="course_faculty" multiple required style="height: 90px; width:100%;"></select>
-                        </div>
-                        <div>
-                            <label style="font-size:12px;font-weight:600;color:#555;">Assistant Faculty
-                                (Optional)</label>
-                            <select id="course_assistant_faculty" multiple style="height: 90px; width:100%;"></select>
-                        </div>
+                    <select id="course_faculty" required>
+                        <option value="">Select Faculty</option>
+                    </select>
+
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <select id="course_assistant_faculty">
+                            <option value="">Select Assistant Faculty (Optional)</option>
+                        </select>
+                        <div id="course_asst_tags" style="display:flex; flex-wrap:wrap; gap:4px; min-height:18px;"></div>
                     </div>
 
                     <select id="course_room_type" required>

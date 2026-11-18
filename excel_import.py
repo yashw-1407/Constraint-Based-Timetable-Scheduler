@@ -180,6 +180,15 @@ def parse_excel(filepath: str) -> Dict[str, Any]:
             else:
                 data['batches'].append(Batch(id=bid, name=name, section_id=sid, strength=strn, home_room_id=hr))
 
+        # Validate that sum of batches does not exceed section capacity
+        sec_map = {s.id: s for s in data['sections']}
+        sec_batch_totals = {}
+        for b in data['batches']:
+            sec_batch_totals[b.section_id] = sec_batch_totals.get(b.section_id, 0) + (b.strength or 0)
+        for sid, total_b in sec_batch_totals.items():
+            if sid in sec_map and sec_map[sid].strength is not None and total_b > sec_map[sid].strength:
+                errors.append(f"Section '{sec_map[sid].name}' ({sid}): Total batch strength ({total_b}) exceeds section capacity ({sec_map[sid].strength}).")
+
     # 5. Courses
     c_rows = get_rows('courses')
     if c_rows is None:

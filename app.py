@@ -214,6 +214,16 @@ def modify_section(section_id):
 
     try:
         data = request.get_json()
+        new_strength = int(data['strength']) if data.get('strength') else None
+        if new_strength is not None and new_strength <= 0:
+            return jsonify({'error': "Section strength must be a positive integer"}), 400
+        if new_strength is not None:
+            batches_sum = sum(b.strength or 0 for b in app_data['batches'] if b.section_id == section_id)
+            if new_strength < batches_sum:
+                return jsonify({
+                    'error': f"Section strength ({new_strength}) cannot be less than total batch strength ({batches_sum})."
+                }), 400
+
         for idx, s in enumerate(app_data['sections']):
             if s.id == section_id:
                 app_data['sections'][idx] = Section(
@@ -221,7 +231,7 @@ def modify_section(section_id):
                     name=data['name'],
                     semester=int(data['semester']),
                     division=data['division'],
-                    strength=int(data['strength']) if data.get('strength') else None,
+                    strength=new_strength,
                     home_room_id=data.get('home_room_id') or None
                 )
                 save_data(app_data)
@@ -243,11 +253,28 @@ def manage_batches():
         data = request.get_json()
         if any(b.id == data['id'] for b in app_data['batches']):
             return jsonify({'error': f"Batch ID '{data['id']}' already exists"}), 400
+
+        sec_id = data.get('section_id')
+        section = next((s for s in app_data['sections'] if s.id == sec_id), None)
+        if not section:
+            return jsonify({'error': f"Section '{sec_id}' does not exist"}), 400
+
+        batch_strn = int(data['strength']) if data.get('strength') else None
+        if batch_strn is not None and batch_strn <= 0:
+            return jsonify({'error': "Batch strength must be a positive integer"}), 400
+
+        if section.strength is not None and batch_strn is not None:
+            existing_batches_sum = sum(b.strength or 0 for b in app_data['batches'] if b.section_id == sec_id)
+            if existing_batches_sum + batch_strn > section.strength:
+                return jsonify({
+                    'error': f"Total batch strength ({existing_batches_sum + batch_strn}) cannot exceed Section '{section.name}' strength ({section.strength})."
+                }), 400
+
         batch = Batch(
             id=data['id'],
             name=data['name'],
-            section_id=data['section_id'],
-            strength=int(data['strength']) if data.get('strength') else None
+            section_id=sec_id,
+            strength=batch_strn
         )
         app_data['batches'].append(batch)
         save_data(app_data)
@@ -265,13 +292,26 @@ def modify_batch(batch_id):
 
     try:
         data = request.get_json()
+        sec_id = data.get('section_id')
+        section = next((s for s in app_data['sections'] if s.id == sec_id), None)
+        batch_strn = int(data['strength']) if data.get('strength') else None
+        if batch_strn is not None and batch_strn <= 0:
+            return jsonify({'error': "Batch strength must be a positive integer"}), 400
+
+        if section and section.strength is not None and batch_strn is not None:
+            other_batches_sum = sum(b.strength or 0 for b in app_data['batches'] if b.section_id == sec_id and b.id != batch_id)
+            if other_batches_sum + batch_strn > section.strength:
+                return jsonify({
+                    'error': f"Total batch strength ({other_batches_sum + batch_strn}) cannot exceed Section '{section.name}' strength ({section.strength})."
+                }), 400
+
         for idx, b in enumerate(app_data['batches']):
             if b.id == batch_id:
                 app_data['batches'][idx] = Batch(
                     id=batch_id,
                     name=data['name'],
-                    section_id=data['section_id'],
-                    strength=int(data['strength']) if data.get('strength') else None
+                    section_id=sec_id,
+                    strength=batch_strn
                 )
                 save_data(app_data)
                 return jsonify({'status': 'ok'})
