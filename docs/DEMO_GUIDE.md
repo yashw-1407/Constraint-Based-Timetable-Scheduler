@@ -25,7 +25,7 @@
 2. **What to point out**:
    - The clean header: **"CampusGrid — Academic Schedule Management System"**.
    - The green glowing indicator: **"System Active"**.
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"Good morning Sir/Madam. Here is CampusGrid running locally on our machine. The system is completely self-contained with zero external dependencies."*
 
 ---
@@ -37,7 +37,7 @@
    - Day Start: `09:00`, Day End: `17:00`.
    - Period duration: `60` minutes.
    - Lunch break: `13:00` to `14:00` (1:00 PM to 2:00 PM).
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"Under Configuration, we can customize working hours, period lengths, and dedicated lunch windows for our department. Every time slot generated adheres to these college rules."*
 
 ---
@@ -47,7 +47,7 @@
 2. **What to point out**:
    - **Rooms**: Notice the separation between `THEORY_ROOM` (e.g. Room 101, 70 capacity) and `LAB` (e.g. Computer Lab 1, 35 capacity).
    - **Sections & Batches**: Show Section `3A` (60 students) with its sub-batches `A1` (30) and `A2` (30).
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"We support both full-class lectures and sub-batches for practicals. Room capacities are tracked so a 60-student class is never assigned to a 35-seat room."*
 
 ---
@@ -58,7 +58,7 @@
    - Look at course `CS301` (*Data Structures*): $L=3, T=0, P=2$.
    - Primary Faculty: `Dr. Sharma`.
    - Lab Batches: `A1` and `A2`.
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"Here we implement university-standard L-T-P credit hours. For a course with 3 theory hours and 2 lab hours, the user enters L=3 and P=2 once. Our engine automatically creates 3 separate 1-hour theory lectures and a 2-hour practical lab for each batch."*
 
 ---
@@ -68,7 +68,7 @@
 2. **What to point out**:
    - The button **"Download Template (.xlsx)"**.
    - Drag & drop Excel upload zone.
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"Instead of typing entries by hand, coordinators can download our pre-formatted 5-sheet Excel template, fill it in offline, and import their entire departmental curriculum in one click."*
 
 ---
@@ -88,7 +88,7 @@
      - **No Same Subject Same Day**: 15/15.
      - **Faculty Workload**: 15/15.
      - **Consecutive Faculty Limit**: 15/15.
-5. **What to say to HOD**:
+5. **Key Point to Highlight**:
    > *"With one click, our CSP Backtracking solver placed all 68 sessions in just 34 milliseconds with zero backtracks! And below, our soft scoring engine evaluated the timetable across 7 comfort metrics, achieving a 75% quality rating with zero same-subject duplications per day."*
 
 ---
@@ -97,7 +97,7 @@
 1. **Action**: Scroll down in the Generate tab to the **Conflict Validation** card.
 2. **What to point out**:
    - Green banner: **"Timetable Valid: 0 Conflicts Detected"**.
-3. **What to say to HOD**:
+3. **Key Point to Highlight**:
    > *"To prove mathematical rigor, our system runs an independent audit function. It checks every single assignment from scratch and proves that no two teachers, rooms, or sections are double-booked."*
 
 ---
@@ -126,4 +126,4 @@ Every senior engineer prepares for demo contingencies. Here is your bulletproof 
 | **Browser doesn't open / shows connection refused** | Make sure `run.bat` is running in your taskbar. If you accidentally closed it, double click `run.bat` and refresh `http://127.0.0.1:5001`. |
 | **Someone accidentally modified data and generator says "Infeasible"** | Don't panic! Go to the **Configuration** tab $\rightarrow$ select **"Standard"** in the Demo Scenario dropdown $\rightarrow$ click **"Load Demo Data"**. This resets the database to the known-good 68-session working dataset in 1 second! |
 | **Port 5001 in use by another app** | In PowerShell, run `$env:PORT=5002; python app.py` and open `http://127.0.0.1:5002`. |
-| **HOD asks to test an impossible scenario** | Load the **"Infeasible"** demo scenario and click Generate! It will return `infeasible` and display the **Capacity Shortfall Diagnostic**: *"Lab demand (2 slots) exceeds available (0 slots)"*. Explain: *"Sir, this proves our system detects physical resource impossibilities and warns the coordinator exactly what is missing!"* |
+| **Tester asks to evaluate an impossible scenario** | Load the **"Infeasible"** demo scenario and click Generate! It will return `infeasible` and display the **Capacity Shortfall Diagnostic**: *"Lab demand (2 slots) exceeds available (0 slots)"*. Explain: *"Sir, this proves our system detects physical resource impossibilities and warns the coordinator exactly what is missing!"* |

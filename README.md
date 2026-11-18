@@ -59,12 +59,28 @@ Constraint-Based-Timetable-Scheduler/
 ├── requirements.txt               # Dependencies (flask, openpyxl)
 ├── README.md                      # Documentation
 │
+├── docs/                          # In-depth architectural & technical documentation
 ├── templates/
 │   └── index.html                 # Single-page web UI
 └── static/
     ├── app.js                     # Clean frontend controller & grid renderer
     └── style.css                  # UI styling
 ```
+
+---
+
+## Technical Documentation
+
+Comprehensive system and algorithm documentation is available in the [`docs/`](docs/) directory:
+
+- [Project Overview](docs/PROJECT_OVERVIEW.md) — Problem statement, manual challenges, and core solutions.
+- [System Architecture](docs/ARCHITECTURE.md) — Three-tier design, data flow diagrams, and REST APIs.
+- [Algorithm Explained](docs/ALGORITHM_EXPLAINED.md) — CSP modeling, MRV heuristics, and hard/soft constraint scoring.
+- [Database Explained](docs/DATABASE_EXPLAINED.md) — SQLite schema, 12 tables, foreign keys, and persistence.
+- [Complete Workflow](docs/COMPLETE_WORKFLOW.md) — Step-by-step tracing from browser interaction to database commits.
+- [Technical Q&A / FAQ](docs/TECHNICAL_FAQ.md) — 50+ in-depth technical questions and answers.
+- [Live Demo Guide](docs/DEMO_GUIDE.md) — Step-by-step demonstration runbook with fallback strategies.
+- [Project Limitations](docs/PROJECT_LIMITATIONS.md) — Identified architectural trade-offs and future scope.
 
 ---
 

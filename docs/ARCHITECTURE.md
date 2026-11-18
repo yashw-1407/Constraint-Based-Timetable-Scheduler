@@ -106,7 +106,7 @@ The Flask application (`app.py`) exposes clean, RESTful JSON endpoints categoriz
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User / HOD
+    actor User as User / Academic Administrator
     participant Browser as Browser (app.js)
     participant Flask as Flask Server (app.py)
     participant DB as SQLite (database.py)

@@ -5,7 +5,7 @@
 
 ### 1. Honest Appraisal: What the System Does vs. Doesn't Do
 
-A senior engineering project should be completely honest about its boundaries. An HOD respects a student far more when they acknowledge architectural trade-offs rather than pretending their software is flawless.
+A senior engineering project should be completely honest about its boundaries. A review committee respects engineering rigor far more when they acknowledge architectural trade-offs rather than pretending their software is flawless.
 
 ```mermaid
 pie title Feature Completeness Breakdown
@@ -28,7 +28,7 @@ pie title Feature Completeness Breakdown
 
 #### C. Single-Admin Security Model (No Role-Based Access Control)
 - **Current Behavior**: Any user who navigates to `http://127.0.0.1:5001` has full administrative power to edit rooms, delete faculty, or wipe the database.
-- **Limitation**: There is no login authentication system, session tokens, or Role-Based Access Control (RBAC) separating HOD, Faculty, and Student privileges.
+- **Limitation**: There is no login authentication system, session tokens, or Role-Based Access Control (RBAC) separating Academic Administrator, Faculty, and Student privileges.
 
 #### D. Global Regeneration vs. Ad-Hoc Dynamic Substitution
 - **Current Behavior**: If a faculty member calls in sick on Wednesday morning, the system does not have an "emergency single-period substitution" button.
@@ -67,7 +67,7 @@ pie title Feature Completeness Breakdown
 If our team continues developing this project for our final year capstone, here is our roadmap:
 
 1. **Role-Based Access Control (RBAC)**:
-   - **HOD / Admin**: Full edit and generator rights.
+   - **Academic Administrator / Admin**: Full edit and generator rights.
    - **Faculty**: Read-only personal timetable view with leave request submission.
    - **Students**: Read-only section view and exam schedule download.
 

@@ -5,7 +5,7 @@
 
 ### 1. What Problem Are We Solving?
 
-Every semester in an engineering college, the Head of Department (HOD) and timetable coordinators face a logistical nightmare: **building the academic timetable**.
+Every semester in an engineering college, the Department Leadership and timetable coordinators face a logistical nightmare: **building the academic timetable**.
 
 Imagine trying to schedule:
 - **60+ weekly lectures and lab sessions**
@@ -73,7 +73,7 @@ Instead of blind trial and error, our algorithm:
 
 | Stakeholder | Real-Life Benefit |
 | :--- | :--- |
-| **HOD / Dean** | Eliminates weeks of manual coordination; generates a provably conflict-free schedule in under 1 second. |
+| **Academic Administrator / Dean** | Eliminates weeks of manual coordination; generates a provably conflict-free schedule in under 1 second. |
 | **Timetable Committee** | Bulk import faculty, room, and course data via Excel (`.xlsx`), click one button to generate, and export printable timetables. |
 | **Faculty Members** | Guaranteed zero overlapping classes; workload balanced evenly across days; avoids more than 3 consecutive teaching hours. |
 | **Students** | Zero room clashes; minimal idle gap periods between classes; theory and lab batches run smoothly in parallel. |

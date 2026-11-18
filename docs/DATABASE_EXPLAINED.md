@@ -185,7 +185,7 @@ erDiagram
    - Contains denormalized, ready-to-display schedule rows.
    - `session_id`, `day`, `start_slot_index`, `room_id`.
    - Pre-computed display fields: `course_name`, `course_code`, `section_name`, `faculty_name`, `room_name`, `time_start`, `time_end`, `batch_name`.
-   - *Why denormalized?* When rendering views for the HOD or exporting to PDF/Excel, the system can fetch everything in one simple `SELECT * FROM timetable_assignments` without complex 8-table joins!
+   - *Why denormalized?* When rendering views for the Academic Administrator or exporting to PDF/Excel, the system can fetch everything in one simple `SELECT * FROM timetable_assignments` without complex 8-table joins!
 12. **`timetable_metadata`**:
    - Key-value table storing generator run results: `status` (`'success'` or `'infeasible'`), generated timestamps, and diagnostic messages.
 

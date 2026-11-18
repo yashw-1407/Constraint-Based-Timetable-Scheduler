@@ -1,4 +1,4 @@
-# HOD Viva Voce & Technical Defense Guide — CampusGrid
+# Technical Q&A & System Architecture Defense Guide — CampusGrid
 ## 50+ Frequently Asked Questions with Confident Answers for College Students
 
 ---
@@ -13,7 +13,7 @@
 
 #### Q3. What are the main stakeholders of this system?
 **Answer:** 
-1. **The HOD and Academic Coordinators** (who save days of manual effort),
+1. **Department Leadership and Academic Coordinators** (who save days of manual effort),
 2. **Faculty Members** (who receive clash-free, balanced weekly schedules without excessive consecutive lectures),
 3. **Students** (who get schedules without awkward 2-hour idle gaps and with coordinated lab batches).
 
@@ -174,11 +174,11 @@ If either limit is breached, search terminates and reports `infeasible`.
 **Answer:** Section 3A's Batch A1 and Batch A2 can take labs at the same time, provided they are in **different rooms** (e.g. Lab 1 and Lab 2) with **different faculty**. Our `check_batch_conflict()` and `check_section_conflict()` explicitly allow parallel batch execution while forbidding whole-section theory clashes.
 
 #### Q38. Why did you use pure Python rather than a C++ solver library like Google OR-Tools?
-**Answer:** Using pure Python allowed us to write a transparent, understandable backtracking solver where every line of constraint logic can be inspected, explained, and defended during a viva, while keeping the installation footprint zero-dependency.
+**Answer:** Using pure Python allowed us to write a transparent, understandable backtracking solver where every line of constraint logic can be inspected, explained, and defended during a technical evaluation, while keeping the installation footprint zero-dependency.
 
 ---
 
-### Category 6: Tough & Tricky HOD Questions (Questions 39–46)
+### Category 6: Advanced & In-Depth Technical Questions (Questions 39–46)
 
 #### Q39. "If a faculty member is sick on Wednesday, can your system reschedule just that one day?"
 **Answer:** In the current version, the system operates as a batch generator for the semester timetable. To reschedule a specific day or class, the coordinator updates faculty availability or course requirements and regenerates the schedule. Real-time ad-hoc single-period substitution is planned as a future module.
@@ -195,7 +195,7 @@ If either limit is breached, search terminates and reports `infeasible`.
 #### Q43. "How do you know your generated timetable actually has zero conflicts? Do you just trust the solver?"
 **Answer:** We do not rely solely on the solver's internal state. We implemented a completely independent audit function: `validate_timetable()` in `scheduler.py`, exposed at `/api/validation`. It iterates through all final assignments from scratch, builds occupancy matrices, and mathematically confirms zero faculty, room, section, or batch collisions.
 
-#### Q44. "What if an HOD wants a specific subject to always be taught in the morning at 9:00 AM?"
+#### Q44. "What if an Academic Administrator wants a specific subject to always be taught in the morning at 9:00 AM?"
 **Answer:** In `Course`, we have a `required_room_id` field. Currently, fixed time-slot pinning can be achieved by narrowing the time-slot domain in `_get_domain()` for that specific course code.
 
 #### Q45. "Why does the standard scenario solve with 0 backtracks, but the bottleneck scenario fails?"
@@ -220,7 +220,7 @@ If either limit is breached, search terminates and reports `infeasible`.
 #### Q49. What would you add if you had another month to work on this?
 **Answer:**
 1. Faculty leave and dynamic daily substitution management.
-2. Role-Based Access Control (RBAC) with separate logins for HOD, Faculty, and Students.
+2. Role-Based Access Control (RBAC) with separate logins for Academic Administrator, Faculty, and Students.
 3. Automated PDF timetable export with college letterhead styling.
 4. Email / WhatsApp notification to faculty members with their individual schedules.
 

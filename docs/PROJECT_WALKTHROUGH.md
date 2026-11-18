@@ -1,5 +1,5 @@
 # Final Project Presentation Script — CampusGrid
-## 5-to-10 Minute Spoken Walkthrough for HOD & Faculty Review Committee
+## 5-to-10 Minute Spoken Walkthrough for Project Evaluation & Review Committee
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### [0:00 – 1:00] Part 1: Introduction & The Core Problem
 
-> **"Respected Head of the Department, faculty members, and dear examiners, good morning.**
+> **"Respected evaluators, faculty members, and review committee, good morning.**
 >
 > Today, my teammates and I are proud to present our mini-project: **CampusGrid — A Constraint-Based Academic Timetable Scheduling System**.
 >
@@ -126,6 +126,6 @@
 > 2. Role-Based Access Control (RBAC) so faculty can view their schedules via mobile login,
 > 3. And multi-building campus travel time optimization.
 >
-> We would like to thank our HOD and project guide for their mentorship throughout this semester.
+> We would like to thank our department faculty and project guide for their mentorship throughout this semester.
 >
 > My teammates and I are now ready to answer any questions you may have. Thank you!"

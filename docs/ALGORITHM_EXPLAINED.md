@@ -150,13 +150,13 @@ Suppose an impossible scenario is requested (e.g. 50 lab hours requested, but on
    Capacity shortfall: Lab demand (32 slots) exceeds available (35 slots).
    Theory demand: 52 slots (Available: 70)
    ```
-   This gives the HOD actionable feedback on exactly what resource is lacking (e.g. "Add 1 more computer lab" or "Increase working hours").
+   This gives the Academic Administrator actionable feedback on exactly what resource is lacking (e.g. "Add 1 more computer lab" or "Increase working hours").
 
 ---
 
 ### 6. Implemented Features vs. Theoretical Concepts
 
-To ensure full honesty during the viva:
+To ensure full honesty during the technical evaluation:
 
 | Concept | Implemented in Our Code? | How It Works in Our Code |
 | :--- | :---: | :--- |
